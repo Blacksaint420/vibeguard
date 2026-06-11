@@ -1,0 +1,29 @@
+mode: block
+enabledScanners:
+  - code
+  - secrets
+  - dependencies
+  - docker
+  - actions
+  - sensitive-files
+blockSeverities:
+  - high
+  - critical
+include:
+  - "**/*"
+exclude:
+  - "node_modules/**"
+  - "dist/**"
+  - "coverage/**"
+dependencyPolicy:
+  vulnerable: block
+  broadVersionRange: warn
+secretPolicy:
+  block: true
+sensitiveFilePolicy:
+  block: true
+suppressionPolicy:
+  requireReason: true
+aiPrompts:
+  enabled: true
+suppressions: []

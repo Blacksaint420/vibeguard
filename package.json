@@ -1,0 +1,23 @@
+{
+  "name": "vibeguard",
+  "version": "0.1.0",
+  "description": "Local-first CLI safety checks for AI-assisted code changes.",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "vibeguard": "./packages/cli/src/index.ts"
+  },
+  "workspaces": [
+    "packages/cli",
+    "packages/core",
+    "packages/scanners",
+    "packages/output"
+  ],
+  "scripts": {
+    "test": "node --test tests/*.test.ts",
+    "vibeguard": "node packages/cli/src/index.ts"
+  },
+  "engines": {
+    "node": ">=25"
+  }
+}
