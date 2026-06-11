@@ -18,7 +18,8 @@ export async function runCheck(options: CheckOptions = {}): Promise<CheckResult>
   const filtered = filterFindings(
     applyPolicy([...scannerFindings, ...vulnerabilityFindings], policy),
     options.minConfidence ?? policy.minConfidence,
-    options.maxFindings
+    options.maxFindings,
+    options.baselineFindingIds
   );
 
   return {
@@ -33,7 +34,8 @@ export async function runCheck(options: CheckOptions = {}): Promise<CheckResult>
       durationMs: Date.now() - started,
       scanMode: collection.scanMode,
       targetPath: collection.targetPath,
-      warnings: collection.warnings.length
+      warnings: collection.warnings.length,
+      baselineSuppressed: filtered.baselineSuppressed
     },
     warnings: collection.warnings
   };
@@ -80,13 +82,21 @@ function collectFilesForCheck(options: CheckOptions, cwd: string, policy: Policy
   };
 }
 
-function filterFindings(findings: Awaited<ReturnType<typeof applyPolicy>>, minConfidence?: Confidence, maxFindings?: number) {
+function filterFindings(
+  findings: Awaited<ReturnType<typeof applyPolicy>>,
+  minConfidence?: Confidence,
+  maxFindings?: number,
+  baselineFindingIds: string[] = []
+) {
   const confidenceRank = { low: 1, medium: 2, high: 3 };
   const minimum = minConfidence ? confidenceRank[minConfidence] : 0;
   const confidenceFiltered = findings.filter((finding) => confidenceRank[finding.confidence] >= minimum);
-  const limited = typeof maxFindings === "number" ? confidenceFiltered.slice(0, maxFindings) : confidenceFiltered;
+  const baselineIds = new Set(baselineFindingIds);
+  const baselineFiltered = confidenceFiltered.filter((finding) => !baselineIds.has(finding.id));
+  const limited = typeof maxFindings === "number" ? baselineFiltered.slice(0, maxFindings) : baselineFiltered;
   return {
     findings: limited,
-    truncated: limited.length < confidenceFiltered.length
+    truncated: limited.length < baselineFiltered.length,
+    baselineSuppressed: confidenceFiltered.length - baselineFiltered.length
   };
 }

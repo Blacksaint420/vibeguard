@@ -71,8 +71,20 @@ export type CheckOptions = {
   repositoryFiles?: DiffFile[];
   minConfidence?: Confidence;
   maxFindings?: number;
+  baselineFindingIds?: string[];
   vulnProvider?: "null" | "mock" | "osv";
   policy?: Policy;
+};
+
+export type ReportRecommendation = {
+  title: string;
+  priority: Severity;
+  ruleId: string;
+  file: string;
+  line: number;
+  suggestedFix: string;
+  aiFixPrompt: string;
+  blocking: boolean;
 };
 
 export type CheckResult = {
@@ -88,8 +100,24 @@ export type CheckResult = {
     scanMode: "repository" | "diff";
     targetPath: string;
     warnings: number;
+    baselineSuppressed: number;
   };
   warnings: ScanWarning[];
+};
+
+export type BaselineFinding = {
+  id: string;
+  ruleId: string;
+  file: string;
+  line: number;
+};
+
+export type Baseline = {
+  tool: "vibeguard";
+  version: string;
+  generatedAt: string;
+  targetPath: string;
+  findings: BaselineFinding[];
 };
 
 export type ScanWarning = {

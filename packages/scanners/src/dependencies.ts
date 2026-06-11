@@ -18,6 +18,10 @@ export function runDependencyScanner(files: DiffFile[]): Finding[] {
   const lockfileChanged = files.some((file) => isLockfile(file.path));
 
   for (const file of files) {
+    if (isLockfile(file.path)) {
+      scanLockfile(file, findings);
+    }
+
     if (!isManifest(file.path)) continue;
 
     if (file.path.endsWith("package.json")) {
@@ -58,6 +62,43 @@ export function runDependencyScanner(files: DiffFile[]): Finding[] {
   }
 
   return findings;
+}
+
+function scanLockfile(file: DiffFile, findings: Finding[]): void {
+  for (const added of file.addedLines) {
+    const trimmed = added.content.trim();
+    if (/"hasInstallScript"\s*:\s*true/.test(trimmed) || /\bhasInstallScript:\s*true\b/.test(trimmed)) {
+      findings.push(scannerFinding({
+        ruleId: "dep-lockfile-install-script",
+        title: "Resolved package has install script",
+        severity: "high",
+        confidence: "high",
+        riskScore: 78,
+        file: file.path,
+        line: added.line,
+        snippet: added.content,
+        why: "The resolved dependency tree includes a package that can execute code during install.",
+        suggestedFix: "Review the package provenance and install script, then remove or pin it only if it is trusted.",
+        testSuggestion: "Run a clean install in an isolated CI job and verify no unexpected network or shell commands execute."
+      }));
+    }
+
+    if (/(resolved\s+|["']resolved["']\s*:\s*["'])http:\/\//i.test(trimmed)) {
+      findings.push(scannerFinding({
+        ruleId: "dep-lockfile-insecure-resolved-url",
+        title: "Lockfile resolves package over HTTP",
+        severity: "high",
+        confidence: "high",
+        riskScore: 82,
+        file: file.path,
+        line: added.line,
+        snippet: added.content,
+        why: "HTTP dependency tarball URLs can be intercepted or replaced before installation.",
+        suggestedFix: "Regenerate the lockfile using HTTPS registries and verify the configured package registry.",
+        testSuggestion: "Run a clean install and confirm resolved URLs use HTTPS."
+      }));
+    }
+  }
 }
 
 export async function runVulnerabilityScanner(files: DiffFile[], provider: VulnerabilityProvider): Promise<Finding[]> {

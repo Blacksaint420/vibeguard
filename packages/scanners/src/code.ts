@@ -19,6 +19,7 @@ const JS_RULES: Rule[] = [
   rule("js-eval", "JavaScript eval usage", "high", "high", 90, /\beval\s*\(/i, "Dynamic code execution can run attacker-controlled input.", "Replace eval with a safe parser, explicit mapping, or validated command dispatch.", "Add a test proving untrusted input is rejected instead of executed.", true),
   rule("js-function-constructor", "Function constructor usage", "high", "high", 88, /(^|[^\w.])(?:new\s+)?Function\s*\(/, "The Function constructor executes strings as code.", "Replace dynamic function construction with explicit functions or a constrained expression parser.", "Add a test for a malicious expression string.", true),
   rule("js-sql-template-interpolation", "SQL query uses template interpolation", "high", "high", 86, /`[^`]*\b(SELECT\b[^`]*\bFROM\b|INSERT\b[^`]*\bINTO\b|UPDATE\b[^`]*\bSET\b|DELETE\b[^`]*\bFROM\b)[^`]*\$\{/i, "Interpolating values into SQL can allow injection.", "Use parameterized queries or prepared statements.", "Add a test with quote characters in user input."),
+  rule("js-prisma-raw-unsafe", "Prisma unsafe raw query", "high", "high", 88, /\.\$(queryRawUnsafe|executeRawUnsafe)\s*\(/i, "Prisma unsafe raw query APIs execute interpolated SQL and can allow injection.", "Use parameterized Prisma queries, $queryRaw tagged templates, or model APIs.", "Add a test proving user input is bound as a parameter."),
   rule("js-child-process-exec-user-input", "child_process.exec with request-derived input", "critical", "high", 96, /\bexec\s*\([^)]*(req\.|request\.|ctx\.request|params|query|body|input)/i, "Shell execution with user-controlled input can lead to command injection.", "Use execFile or spawn with an argument array and strict allowlists.", "Add a test that shell metacharacters are treated as data."),
   rule("js-log-secret", "Secret or authorization value logged", "medium", "medium", 55, /console\.(log|warn|error|info)\([^)]*(authorization|password|secret|token|api[_-]?key)/i, "Logs often outlive requests and can expose credentials.", "Remove the secret from logs or log only non-sensitive metadata.", "Add a test or lint case ensuring sensitive headers are redacted."),
   rule("js-jwt-decode-no-verify", "JWT decoded without verification", "high", "high", 84, /\bjwt\.decode\s*\(|verify\s*:\s*false/i, "Decoded JWTs are not trusted unless their signature and claims are verified.", "Use JWT verification with expected issuer, audience, algorithm, and expiry checks.", "Add a test that a tampered token is rejected."),
@@ -26,8 +27,10 @@ const JS_RULES: Rule[] = [
   rule("js-insecure-cookie", "Insecure cookie options", "high", "medium", 78, /(res\.cookie|cookie)\([^)]*(secure\s*:\s*false|httpOnly\s*:\s*false|sameSite\s*:\s*["']none["'])/i, "Missing secure cookie controls can expose session data.", "Set secure, httpOnly, and an appropriate SameSite policy for session cookies.", "Add a test that session cookies include secure attributes."),
   rule("js-tls-disabled", "TLS verification disabled", "high", "high", 88, /NODE_TLS_REJECT_UNAUTHORIZED\s*=\s*["']?0|rejectUnauthorized\s*:\s*false/i, "Disabling TLS verification allows machine-in-the-middle attacks.", "Remove the override and configure trusted certificates explicitly.", "Add a test that HTTPS clients use certificate validation."),
   rule("js-ssrf-request-input", "Outbound request uses request-derived URL", "high", "medium", 76, /\b(fetch|axios(?:\.\w+)?)\s*\([^)]*(req\.|request\.|ctx\.request|params|query|body)/i, "Fetching request-controlled URLs can enable SSRF.", "Validate destination hosts against an allowlist and block internal networks.", "Add tests for blocked loopback and metadata-service URLs."),
+  rule("js-nextjs-ssrf-query-fetch", "Next.js server-side fetch uses query input", "high", "medium", 78, /getServerSideProps.*\bfetch\s*\([^)]*(context\.query|searchParams|params\.)/i, "Next.js server-side data loaders can turn query-controlled URLs into SSRF.", "Resolve destinations through an allowlist and block internal network ranges.", "Add tests for blocked loopback and metadata-service URLs."),
   rule("js-path-traversal", "Filesystem access uses request-derived path", "high", "medium", 76, /\b(readFile|readFileSync|createReadStream|writeFile|writeFileSync|sendFile)\s*\([^)]*(req\.|request\.|params|query|body|\.\.)/i, "Request-controlled filesystem paths can allow path traversal.", "Resolve paths under an allowed base directory and reject traversal.", "Add tests for ../ traversal and absolute paths."),
   rule("js-weak-random-token", "Math.random used for token generation", "medium", "high", 66, /Math\.random\s*\(\).*token|token.*Math\.random\s*\(\)/i, "Math.random is predictable and unsuitable for security tokens.", "Use crypto.randomBytes, crypto.randomUUID, or Web Crypto.", "Add a test that token generation uses a cryptographic API."),
+  rule("js-supabase-service-role-client", "Supabase service role key used in application code", "critical", "medium", 92, /(SUPABASE_SERVICE_ROLE_KEY|service_role)/i, "Supabase service role credentials bypass row-level security and must not be exposed to client or route code.", "Keep service role usage in isolated server-only modules and enforce row-level security for user paths.", "Add a test or build check that service role variables are not imported by client bundles."),
   rule("js-express-route-no-obvious-auth", "Express route has no obvious auth middleware", "low", "low", 30, /app\.(get|post|put|patch|delete)\s*\([^,]+,\s*(async\s*)?\(?\s*(req|request)\s*,/i, "New routes may accidentally miss authorization checks.", "Add explicit authentication and authorization middleware or document why the route is public.", "Add route tests for unauthenticated and unauthorized requests.")
 ];
 
@@ -41,7 +44,13 @@ const PY_RULES: Rule[] = [
   rule("py-debug-true", "Debug mode enabled", "medium", "high", 65, /debug\s*=\s*True|DEBUG\s*=\s*True/i, "Debug mode can expose stack traces, secrets, and interactive consoles.", "Disable debug mode outside local development.", "Add a configuration test for production settings."),
   rule("py-weak-random-token", "random module used for token generation", "medium", "high", 66, /random\.\w+\([^)]*\).*token|token.*random\.\w+\(/i, "The random module is predictable and unsuitable for security tokens.", "Use secrets.token_urlsafe or os.urandom-backed APIs.", "Add a test that token generation uses the secrets module."),
   rule("py-jwt-no-verify", "JWT verification disabled", "high", "high", 84, /jwt\.decode\([^)]*(verify\s*=\s*False|verify_signature["']?\s*:\s*False|options\s*=\s*\{[^}]*verify_signature["']?\s*:\s*False)/i, "JWTs must be signature-verified before trusting claims.", "Enable verification and validate issuer, audience, algorithm, and expiry.", "Add a test that a tampered token is rejected."),
-  rule("py-permissive-cors", "Permissive CORS", "medium", "medium", 60, /CORS\s*\([^)]*(origins\s*=\s*["']\*["']|resources\s*=\s*["']\*["'])/i, "Wildcard CORS can expose authenticated APIs to untrusted origins.", "Allowlist expected origins.", "Add a test for rejected untrusted origins.")
+  rule("py-permissive-cors", "Permissive CORS", "medium", "medium", 60, /CORS\s*\([^)]*(origins\s*=\s*["']\*["']|resources\s*=\s*["']\*["'])/i, "Wildcard CORS can expose authenticated APIs to untrusted origins.", "Allowlist expected origins.", "Add a test for rejected untrusted origins."),
+  rule("py-django-csrf-exempt", "Django CSRF protection disabled", "high", "high", 82, /@csrf_exempt\b/i, "Disabling CSRF protection on Django views can allow cross-site request forgery.", "Remove csrf_exempt or replace it with a narrowly scoped, authenticated non-browser endpoint.", "Add a test that browser-origin form submissions require a CSRF token."),
+  rule("py-flask-route-no-obvious-auth", "Flask route has no obvious auth guard", "low", "low", 30, /@\w+\.route\s*\(/i, "New Flask routes may accidentally miss authentication or authorization checks.", "Add explicit authentication and authorization decorators or document why the route is public.", "Add route tests for unauthenticated and unauthorized requests.")
+];
+
+const FIREBASE_RULES: Rule[] = [
+  rule("firebase-public-rules", "Firebase rules allow public access", "critical", "high", 94, /allow\s+(read|write|read\s*,\s*write)\s*:\s*if\s+true\s*;/i, "Public Firebase read or write rules can expose or mutate production data.", "Require authenticated users and resource-level authorization conditions.", "Add emulator tests proving unauthenticated reads and writes are denied.")
 ];
 
 export function runCodeScanner(files: DiffFile[]): Finding[] {
@@ -49,7 +58,13 @@ export function runCodeScanner(files: DiffFile[]): Finding[] {
 
   for (const file of files) {
     if (isTestFixtureFile(file.path)) continue;
-    const rules = isJavaScriptFile(file.path) ? JS_RULES : isPythonFile(file.path) ? PY_RULES : [];
+    const rules = isJavaScriptFile(file.path)
+      ? JS_RULES
+      : isPythonFile(file.path)
+        ? PY_RULES
+        : isFirebaseRulesFile(file.path)
+          ? FIREBASE_RULES
+          : [];
     if (rules.length === 0) continue;
 
     for (const line of file.addedLines) {
@@ -82,6 +97,10 @@ function rule(id: string, title: string, severity: Rule["severity"], confidence:
 
 function isTestFixtureFile(path: string): boolean {
   return /(^|\/)(__tests__|tests?|spec)\//.test(path) || /\.(test|spec)\.[cm]?[jt]sx?$/.test(path);
+}
+
+function isFirebaseRulesFile(path: string): boolean {
+  return /(^|\/)(firestore|storage)\.rules$/.test(path);
 }
 
 function stripStringsAndLineComment(line: string): string {

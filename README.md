@@ -29,8 +29,13 @@ vibeguard check --format json
 vibeguard check --format sarif
 vibeguard check --format markdown
 vibeguard check --format html
+vibeguard check --output vibeguard-report.json
+vibeguard check --baseline vibeguard-baseline.json
 vibeguard check --quiet --max-findings 20 --min-confidence high
 vibeguard check --vuln-provider osv
+vibeguard baseline "/Users/you/Projects/CV Maker"
+vibeguard report "/Users/you/Projects/CV Maker" --format html --output vibeguard-report.html
+vibeguard suppress js-eval --file src/app.js --reason "Accepted generated sandbox"
 vibeguard explain js-eval
 vibeguard doctor
 ```
@@ -61,10 +66,10 @@ Optional dependency vulnerability lookup is off by default. `--vuln-provider osv
 Output formats:
 
 - `table`: terminal report with scan summary footer.
-- `json`: automation-friendly report with warnings and scan metadata.
-- `sarif`: code-scanning compatible report.
-- `markdown`: pull request or review summary.
-- `html`: standalone human-readable report.
+- `json`: automation-friendly report with warnings, scan metadata, and recommended next actions.
+- `sarif`: code-scanning compatible report with invocation metadata and recommendations.
+- `markdown`: pull request or review summary with fix priorities.
+- `html`: standalone human-readable report with summary cards and recommended next actions.
 
 Useful scan controls:
 
@@ -73,7 +78,20 @@ vibeguard check --quiet
 vibeguard check --max-findings 50
 vibeguard check --min-confidence high
 vibeguard check --no-color
+vibeguard report --format markdown --output vibeguard-report.md
 ```
+
+Baseline and triage workflow:
+
+```bash
+vibeguard baseline --output vibeguard-baseline.json
+vibeguard check --baseline vibeguard-baseline.json
+vibeguard suppress <finding_id_or_rule_id> --file src/app.js --reason "Reviewed and accepted"
+```
+
+The baseline records the current finding IDs so future scans can focus on newly introduced risk. Suppressions are written to `vibeguard.yml` and should include a reason.
+
+Framework-aware checks currently include Express, Next.js, Prisma, Supabase service role usage, Firebase rules, Django CSRF exemptions, and Flask routes without obvious authentication guards.
 
 ## Configuration
 

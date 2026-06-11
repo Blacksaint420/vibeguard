@@ -20,7 +20,6 @@ include:
   - "**/*"
 exclude: []
 suppressions: []
-minConfidence: high
 ```
 
 Suppress a finding by rule and file:
@@ -42,4 +41,17 @@ Runtime controls can also be passed on the command line:
 vibeguard check --max-findings 50
 vibeguard check --min-confidence high
 vibeguard check --quiet
+```
+
+Baseline current findings when adopting VibeGuard in an existing repository:
+
+```bash
+vibeguard baseline --output vibeguard-baseline.json
+vibeguard check --baseline vibeguard-baseline.json
+```
+
+Add a reasoned suppression from the CLI:
+
+```bash
+vibeguard suppress js-express-route-no-obvious-auth --file src/public-healthcheck.ts --reason "Public unauthenticated health check."
 ```

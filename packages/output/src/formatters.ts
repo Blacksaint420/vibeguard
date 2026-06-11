@@ -1,4 +1,5 @@
-import type { CheckResult, Finding } from "../../core/src/types.ts";
+import { severityRank } from "../../core/src/types.ts";
+import type { CheckResult, Finding, ReportRecommendation } from "../../core/src/types.ts";
 
 type ReportLike = Finding[] | CheckResult;
 
@@ -10,6 +11,7 @@ export function renderJson(reportLike: ReportLike): string {
       version: "0.1.0",
       summary: report.summary,
       warnings: report.warnings,
+      recommendations: buildRecommendations(report),
       findings: report.findings
     },
     null,
@@ -50,6 +52,7 @@ export function renderTable(reportLike: ReportLike): string {
     renderRow(header),
     renderRow(widths.map((width) => "-".repeat(width))),
     ...rows.map(renderRow),
+    renderRecommendationFooter(report),
     renderScanFooter(report),
     ""
   ].join("\n");
@@ -68,6 +71,7 @@ export function renderMarkdown(reportLike: ReportLike): string {
     `- Files scanned: ${report.summary.filesScanned}`,
     `- Scan mode: ${report.summary.scanMode}`,
     `- Warnings: ${report.summary.warnings}`,
+    `- Baseline suppressed: ${report.summary.baselineSuppressed}`,
     "",
     "### Findings By Severity",
     "",
@@ -78,6 +82,19 @@ export function renderMarkdown(reportLike: ReportLike): string {
     ...Object.entries(byScanner).map(([scanner, count]) => `- ${scanner}: ${count}`),
     ""
   ];
+
+  lines.push("### Recommended Next Actions", "");
+  const recommendations = buildRecommendations(report);
+  if (recommendations.length === 0) {
+    lines.push("- No action needed.", "");
+  } else {
+    for (const recommendation of recommendations) {
+      lines.push(
+        `- ${recommendation.blocking ? "Blocker" : "Review"}: ${escapeMarkdown(recommendation.title)} in ${recommendation.file}:${recommendation.line}. ${escapeMarkdown(recommendation.suggestedFix)}`
+      );
+    }
+    lines.push("");
+  }
 
   if (findings.length === 0) {
     lines.push("No findings.", "");
@@ -132,7 +149,9 @@ export function renderSarif(reportLike: ReportLike): string {
                 scanMode: report.summary.scanMode,
                 filesScanned: report.summary.filesScanned,
                 durationMs: report.summary.durationMs,
-                truncated: report.summary.truncated
+                truncated: report.summary.truncated,
+                baselineSuppressed: report.summary.baselineSuppressed,
+                recommendations: buildRecommendations(report)
               }
             }
           ],
@@ -169,6 +188,7 @@ export function renderSarif(reportLike: ReportLike): string {
 
 export function renderHtml(reportLike: ReportLike): string {
   const report = normalizeReport(reportLike);
+  const recommendations = buildRecommendations(report);
   const rows = report.findings.map((finding) => [
     finding.blocking ? "BLOCK" : "WARN",
     finding.severity,
@@ -185,17 +205,33 @@ export function renderHtml(reportLike: ReportLike): string {
     "<head>",
     "<meta charset=\"utf-8\">",
     "<title>VibeGuard Report</title>",
-    "<style>body{font-family:system-ui,sans-serif;margin:24px;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ddd;padding:6px;text-align:left;vertical-align:top;}th{background:#f5f5f5}.block{color:#b00020;font-weight:700}.warn{color:#8a5a00}</style>",
+    "<style>body{font-family:system-ui,sans-serif;margin:24px;color:#1f2933;background:#fbfcfd;}main{max-width:1180px;margin:0 auto;}section{margin:20px 0;}table{border-collapse:collapse;width:100%;background:#fff;}th,td{border:1px solid #d9e2ec;padding:8px;text-align:left;vertical-align:top;}th{background:#eef2f7}.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.metric{background:#fff;border:1px solid #d9e2ec;border-radius:6px;padding:12px}.metric strong{display:block;font-size:24px}.actions{background:#fff;border:1px solid #d9e2ec;border-radius:6px;padding:14px}.block{color:#b00020;font-weight:700}.warn{color:#8a5a00}</style>",
     "</head>",
     "<body>",
+    "<main>",
     "<h1>VibeGuard Report</h1>",
-    `<p>Findings: ${report.summary.findings} | Blocking: ${report.summary.blocking} | Files scanned: ${report.summary.filesScanned} | Warnings: ${report.summary.warnings}</p>`,
+    "<section class=\"summary\">",
+    `<div class=\"metric\"><span>Findings</span><strong>${report.summary.findings}</strong></div>`,
+    `<div class=\"metric\"><span>Blocking</span><strong>${report.summary.blocking}</strong></div>`,
+    `<div class=\"metric\"><span>Files scanned</span><strong>${report.summary.filesScanned}</strong></div>`,
+    `<div class=\"metric\"><span>Warnings</span><strong>${report.summary.warnings}</strong></div>`,
+    `<div class=\"metric\"><span>Baseline suppressed</span><strong>${report.summary.baselineSuppressed}</strong></div>`,
+    "</section>",
+    "<section class=\"actions\">",
+    "<h2>Recommended Next Actions</h2>",
+    recommendations.length === 0
+      ? "<p>No action needed.</p>"
+      : `<ol>${recommendations.map((recommendation) => `<li><strong>${escapeHtml(recommendation.title)}</strong> in ${escapeHtml(`${recommendation.file}:${recommendation.line}`)}. ${escapeHtml(recommendation.suggestedFix)}</li>`).join("")}</ol>`,
+    "</section>",
+    "<section>",
     "<table>",
     "<thead><tr><th>Status</th><th>Severity</th><th>Confidence</th><th>Scanner</th><th>Rule</th><th>Location</th><th>Why</th><th>Suggested fix</th></tr></thead>",
     "<tbody>",
     ...rows.map((row) => `<tr><td class="${row[0] === "BLOCK" ? "block" : "warn"}">${escapeHtml(row[0])}</td>${row.slice(1).map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`),
     "</tbody>",
     "</table>",
+    "</section>",
+    "</main>",
     "</body>",
     "</html>"
   ].join("\n");
@@ -209,6 +245,29 @@ export function renderFindings(reportLike: ReportLike, format = "table"): string
   return renderTable(reportLike);
 }
 
+export function buildRecommendations(reportLike: ReportLike, limit = 5): ReportRecommendation[] {
+  const report = normalizeReport(reportLike);
+  return [...report.findings]
+    .sort((left, right) =>
+      Number(right.blocking) - Number(left.blocking)
+      || severityRank(right.severity) - severityRank(left.severity)
+      || right.riskScore - left.riskScore
+      || left.file.localeCompare(right.file)
+      || left.line - right.line
+    )
+    .slice(0, limit)
+    .map((finding) => ({
+      title: `Fix ${finding.title}`,
+      priority: finding.severity,
+      ruleId: finding.ruleId,
+      file: finding.file,
+      line: finding.line,
+      suggestedFix: finding.suggestedFix,
+      aiFixPrompt: finding.aiFixPrompt,
+      blocking: finding.blocking
+    }));
+}
+
 function summarize(findings: Finding[], existing?: CheckResult["summary"]) {
   return {
     filesChanged: existing?.filesChanged ?? 0,
@@ -220,6 +279,7 @@ function summarize(findings: Finding[], existing?: CheckResult["summary"]) {
     scanMode: existing?.scanMode ?? "repository",
     targetPath: existing?.targetPath ?? "",
     warnings: existing?.warnings ?? 0,
+    baselineSuppressed: existing?.baselineSuppressed ?? 0,
     bySeverity: findings.reduce<Record<string, number>>((accumulator, finding) => {
       accumulator[finding.severity] = (accumulator[finding.severity] ?? 0) + 1;
       return accumulator;
@@ -269,7 +329,14 @@ function renderScanFooter(report: CheckResult): string {
     `warnings=${report.summary.warnings}`
   ];
   if (report.summary.truncated) parts.push("truncated=true");
+  if (report.summary.baselineSuppressed > 0) parts.push(`baselineSuppressed=${report.summary.baselineSuppressed}`);
   return parts.join(" | ");
+}
+
+function renderRecommendationFooter(report: CheckResult): string {
+  const recommendations = buildRecommendations(report, 3);
+  if (recommendations.length === 0) return "Next actions: none";
+  return `Next actions: ${recommendations.map((recommendation) => `${recommendation.title} (${recommendation.file}:${recommendation.line})`).join("; ")}`;
 }
 
 function escapeHtml(value: string): string {
