@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { createFinding } from "../packages/core/src/types.ts";
+import { FRAMEWORK_CATALOG } from "../packages/core/src/frameworks/catalog.ts";
 import { enrichFindingWithEnterpriseContext } from "../packages/core/src/frameworks/crosswalk.ts";
 import { summarizeGrcRisks } from "../packages/core/src/risk.ts";
 
@@ -62,4 +63,40 @@ test("GRC risk summary groups enriched findings by category and framework", () =
   assert.equal(summary.byCategory.some((entry) => entry.category === "AI application security"), true);
   assert.equal(summary.byFramework.some((entry) => entry.framework === "owasp-llm-2025"), true);
   assert.equal(summary.controlGaps.some((entry) => entry.controlGap === "least privilege"), true);
+});
+
+test("framework catalog exposes expected IDs, source versions, and source URLs", () => {
+  assert.deepEqual(
+    FRAMEWORK_CATALOG.map((entry) => entry.id),
+    ["owasp-llm-2025", "nist-ai-rmf", "mitre-atlas", "google-saif"]
+  );
+  assert.equal(FRAMEWORK_CATALOG.find((entry) => entry.id === "owasp-llm-2025")?.sourceVersion, "2025");
+  assert.equal(FRAMEWORK_CATALOG.find((entry) => entry.id === "owasp-llm-2025")?.sourceUrl, "https://genai.owasp.org/llm-top-10/");
+  assert.equal(FRAMEWORK_CATALOG.find((entry) => entry.id === "nist-ai-rmf")?.sourceVersion, "AI RMF 1.0 + GenAI Profile");
+  assert.equal(
+    FRAMEWORK_CATALOG.find((entry) => entry.id === "nist-ai-rmf")?.sourceUrl,
+    "https://www.nist.gov/itl/ai-risk-management-framework"
+  );
+  assert.equal(FRAMEWORK_CATALOG.find((entry) => entry.id === "mitre-atlas")?.sourceVersion, "2026 public knowledge base");
+  assert.equal(FRAMEWORK_CATALOG.find((entry) => entry.id === "mitre-atlas")?.sourceUrl, "https://atlas.mitre.org/");
+  assert.equal(FRAMEWORK_CATALOG.find((entry) => entry.id === "google-saif")?.sourceVersion, "SAIF 2.0");
+  assert.equal(FRAMEWORK_CATALOG.find((entry) => entry.id === "google-saif")?.sourceUrl, "https://saif.google/");
+});
+
+test("enriched framework mappings and control gaps are isolated between findings", () => {
+  const first = enrichFindingWithEnterpriseContext(technicalFinding("js-eval"));
+
+  first.controlGaps.push("mutated gap");
+  first.frameworks.push({
+    framework: "owasp-llm-2025",
+    id: "MUTATED",
+    name: "Mutated mapping",
+    sourceVersion: "mutated"
+  });
+
+  const second = enrichFindingWithEnterpriseContext(technicalFinding("js-eval"));
+
+  assert.deepEqual(second.controlGaps, ["unsafe code execution", "output handling", "least privilege"]);
+  assert.equal(second.frameworks.some((entry) => entry.id === "MUTATED"), false);
+  assert.equal(second.frameworks.find((entry) => entry.framework === "owasp-llm-2025")?.sourceVersion, "2025");
 });

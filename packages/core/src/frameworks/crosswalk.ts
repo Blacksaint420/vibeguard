@@ -1,4 +1,5 @@
-import type { Finding, RuleMetadata } from "../types.ts";
+import type { Finding, FrameworkId, FrameworkMapping, RuleMetadata } from "../types.ts";
+import { FRAMEWORK_CATALOG } from "./catalog.ts";
 import type { RuleEnterpriseContext } from "./types.ts";
 
 const RULE_VERSION = "2026.06.11";
@@ -25,10 +26,10 @@ const CONTEXT_BY_RULE: Record<string, RuleEnterpriseContext> = {
   "js-eval": {
     rule: stableRule("js-eval", "JavaScript eval usage", "code"),
     frameworks: [
-      { framework: "owasp-llm-2025", id: "LLM05:2025", name: "Improper Output Handling", sourceVersion: "2025" },
-      { framework: "nist-ai-rmf", id: "MEASURE", name: "Analyze and assess AI risks", sourceVersion: "AI RMF 1.0 + GenAI Profile" },
-      { framework: "mitre-atlas", id: "AML.T0051", name: "LLM Prompt Injection", sourceVersion: "2026 public knowledge base" },
-      { framework: "google-saif", id: "input-output-controls", name: "Input and output controls", sourceVersion: "SAIF 2.0" }
+      frameworkMapping("owasp-llm-2025", "LLM05:2025", "Improper Output Handling"),
+      frameworkMapping("nist-ai-rmf", "MEASURE", "Analyze and assess AI risks"),
+      frameworkMapping("mitre-atlas", "AML.T0051", "LLM Prompt Injection"),
+      frameworkMapping("google-saif", "input-output-controls", "Input and output controls")
     ],
     risk: {
       category: "AI application security",
@@ -42,9 +43,9 @@ const CONTEXT_BY_RULE: Record<string, RuleEnterpriseContext> = {
   "secret-github-token": {
     rule: stableRule("secret-github-token", "GitHub token in changed code", "secrets"),
     frameworks: [
-      { framework: "owasp-llm-2025", id: "LLM02:2025", name: "Sensitive Information Disclosure", sourceVersion: "2025" },
-      { framework: "nist-ai-rmf", id: "MANAGE", name: "Prioritize and respond to AI risks", sourceVersion: "AI RMF 1.0 + GenAI Profile" },
-      { framework: "google-saif", id: "secure-secrets", name: "Secure secrets and credentials", sourceVersion: "SAIF 2.0" }
+      frameworkMapping("owasp-llm-2025", "LLM02:2025", "Sensitive Information Disclosure"),
+      frameworkMapping("nist-ai-rmf", "MANAGE", "Prioritize and respond to AI risks"),
+      frameworkMapping("google-saif", "secure-secrets", "Secure secrets and credentials")
     ],
     risk: {
       category: "Credential exposure",
@@ -59,12 +60,17 @@ const CONTEXT_BY_RULE: Record<string, RuleEnterpriseContext> = {
 
 export function enrichFindingWithEnterpriseContext(finding: Finding): Finding {
   const context = CONTEXT_BY_RULE[finding.ruleId] ?? DEFAULT_CONTEXT(finding.ruleId);
+  const rule = finding.rule ?? context.rule;
+  const frameworks = finding.frameworks?.length ? finding.frameworks : context.frameworks;
+  const risk = finding.risk ?? context.risk;
+  const controlGaps = finding.controlGaps?.length ? finding.controlGaps : context.controlGaps;
+
   return {
     ...finding,
-    rule: finding.rule ?? context.rule,
-    frameworks: finding.frameworks?.length ? finding.frameworks : context.frameworks,
-    risk: finding.risk ?? context.risk,
-    controlGaps: finding.controlGaps?.length ? finding.controlGaps : context.controlGaps
+    rule: { ...rule },
+    frameworks: frameworks.map((mapping) => ({ ...mapping })),
+    risk: { ...risk },
+    controlGaps: [...controlGaps]
   };
 }
 
@@ -75,5 +81,19 @@ function stableRule(id: string, name: string, scanner: RuleMetadata["scanner"]):
     version: RULE_VERSION,
     stability: "stable",
     scanner
+  };
+}
+
+function frameworkMapping(framework: FrameworkId, id: string, name: string): FrameworkMapping {
+  const catalogEntry = FRAMEWORK_CATALOG.find((entry) => entry.id === framework);
+  if (!catalogEntry) {
+    throw new Error(`Unknown framework mapping: ${framework}`);
+  }
+
+  return {
+    framework,
+    id,
+    name,
+    sourceVersion: catalogEntry.sourceVersion
   };
 }
