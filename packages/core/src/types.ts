@@ -4,6 +4,9 @@ export type Severity = "low" | "medium" | "high" | "critical";
 export type Confidence = "low" | "medium" | "high";
 export type OutputFormat = "table" | "json" | "sarif" | "markdown" | "html";
 export type ScannerName = "code" | "secrets" | "dependencies" | "docker" | "actions" | "sensitive-files";
+export type FrameworkId = "owasp-llm-2025" | "nist-ai-rmf" | "mitre-atlas" | "google-saif";
+export type RiskLevel = "low" | "medium" | "high" | "critical";
+export type RuleStability = "stable" | "experimental" | "custom";
 export type OwaspLlmCategoryId =
   | "LLM01:2025"
   | "LLM02:2025"
@@ -19,6 +22,29 @@ export type OwaspLlmCategoryId =
 export type OwaspLlmCategory = {
   id: OwaspLlmCategoryId;
   name: string;
+};
+
+export type RuleMetadata = {
+  id: string;
+  name: string;
+  version: string;
+  stability: RuleStability;
+  scanner?: ScannerName;
+};
+
+export type FrameworkMapping = {
+  framework: FrameworkId;
+  id: string;
+  name: string;
+  sourceVersion: string;
+};
+
+export type GrcRisk = {
+  category: string;
+  likelihood: RiskLevel;
+  impact: RiskLevel;
+  severity: RiskLevel;
+  controlOwner: "engineering" | "security" | "grc" | "platform";
 };
 
 export type ChangedLine = {
@@ -46,6 +72,10 @@ export type Finding = {
   line: number;
   snippet: string;
   owasp?: OwaspLlmCategory;
+  rule?: RuleMetadata;
+  frameworks?: FrameworkMapping[];
+  risk?: GrcRisk;
+  controlGaps?: string[];
   evidence?: string;
   attackPath?: string;
   impact?: string;
@@ -173,6 +203,10 @@ export function createFinding(input: FindingInput): Finding {
   return {
     ...input,
     id: input.id ?? createFindingId(input.ruleId, input.file, input.line, input.snippet),
+    rule: input.rule,
+    frameworks: input.frameworks ?? [],
+    risk: input.risk,
+    controlGaps: input.controlGaps ?? [],
     blocking: input.blocking ?? false
   };
 }
