@@ -1,6 +1,6 @@
 import { createFinding } from "../../core/src/types.ts";
 import { generateAiFixPrompt } from "../../core/src/prompts.ts";
-import type { Confidence, Finding, Severity } from "../../core/src/types.ts";
+import type { Confidence, Finding, OwaspLlmCategory, Severity } from "../../core/src/types.ts";
 
 export function scannerFinding(input: {
   ruleId: string;
@@ -11,6 +11,10 @@ export function scannerFinding(input: {
   file: string;
   line: number;
   snippet: string;
+  owasp?: OwaspLlmCategory;
+  evidence?: string;
+  attackPath?: string;
+  impact?: string;
   why: string;
   suggestedFix: string;
   testSuggestion: string;
@@ -30,4 +34,3 @@ export function isJavaScriptFile(path: string): boolean {
 export function isPythonFile(path: string): boolean {
   return /\.py$/.test(path);
 }
-

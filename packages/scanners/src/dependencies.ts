@@ -1,4 +1,5 @@
 import type { DiffFile, Finding, VulnerabilityProvider } from "../../core/src/types.ts";
+import { owaspCategory } from "../../core/src/owasp.ts";
 import { scannerFinding } from "./utils.ts";
 
 const LOCKFILES = ["package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml", "poetry.lock"];
@@ -49,11 +50,15 @@ export function runDependencyScanner(files: DiffFile[]): Finding[] {
         ruleId: "dep-lockfile-without-manifest",
         title: "Lockfile changed without manifest change",
         severity: "medium",
-        confidence: "high",
+        confidence: "medium",
         riskScore: 64,
         file: file.path,
         line: file.addedLines[0]?.line ?? 1,
         snippet: file.addedLines[0]?.content ?? file.path,
+        owasp: owaspCategory("LLM03:2025"),
+        evidence: "A lockfile changed without a matching dependency manifest change in the same scan.",
+        attackPath: "Attacker alters resolved package metadata -> install uses changed lockfile -> unreviewed code enters the application.",
+        impact: "Lockfile-only changes can hide dependency substitution or dependency confusion in code review.",
         why: "Lockfile-only changes can alter installed code without an obvious manifest review point.",
         suggestedFix: "Explain and review the lockfile delta, or update the manifest in the same change.",
         testSuggestion: "Run a clean install and verify the resolved dependency tree."
@@ -77,6 +82,10 @@ function scanLockfile(file: DiffFile, findings: Finding[]): void {
         file: file.path,
         line: added.line,
         snippet: added.content,
+        owasp: owaspCategory("LLM03:2025"),
+        evidence: "The resolved dependency metadata marks a package as having an install lifecycle script.",
+        attackPath: "Package install runs lifecycle script -> script executes commands in developer or CI environment.",
+        impact: "A compromised package can execute arbitrary code during install and steal credentials or alter builds.",
         why: "The resolved dependency tree includes a package that can execute code during install.",
         suggestedFix: "Review the package provenance and install script, then remove or pin it only if it is trusted.",
         testSuggestion: "Run a clean install in an isolated CI job and verify no unexpected network or shell commands execute."
@@ -93,6 +102,10 @@ function scanLockfile(file: DiffFile, findings: Finding[]): void {
         file: file.path,
         line: added.line,
         snippet: added.content,
+        owasp: owaspCategory("LLM03:2025"),
+        evidence: "The lockfile resolves a package tarball with an http:// URL.",
+        attackPath: "Installer downloads package over HTTP -> network attacker tampers with package -> compromised code is installed.",
+        impact: "The build can consume attacker-modified dependency code.",
         why: "HTTP dependency tarball URLs can be intercepted or replaced before installation.",
         suggestedFix: "Regenerate the lockfile using HTTPS registries and verify the configured package registry.",
         testSuggestion: "Run a clean install and confirm resolved URLs use HTTPS."
@@ -115,6 +128,10 @@ export async function runVulnerabilityScanner(files: DiffFile[], provider: Vulne
         file: dependency.file,
         line: dependency.line,
         snippet: `${dependency.name}@${dependency.version}`,
+        owasp: owaspCategory("LLM03:2025"),
+        evidence: `Dependency vulnerability provider reported ${vulnerability.id} for ${dependency.name}@${dependency.version}.`,
+        attackPath: "Application installs vulnerable dependency -> attacker reaches vulnerable code path -> dependency exploit executes.",
+        impact: "Known vulnerable packages can compromise confidentiality, integrity, or availability of the LLM application.",
         why: `${vulnerability.id}: ${vulnerability.summary}`,
         suggestedFix: "Upgrade to a non-vulnerable version or remove the dependency.",
         testSuggestion: "Run dependency and integration tests after upgrading the package."
@@ -178,6 +195,10 @@ function addInstallScriptFinding(filePath: string, lineNumber: number, lineConte
     file: filePath,
     line: lineNumber,
     snippet: lineContent,
+    owasp: owaspCategory("LLM03:2025"),
+    evidence: "package.json defines an install lifecycle script.",
+    attackPath: "Developer or CI runs install -> lifecycle script executes -> script can run arbitrary commands.",
+    impact: "Install scripts can exfiltrate tokens, modify build outputs, or install malicious payloads.",
     why: "Install lifecycle scripts execute during dependency installation and can run arbitrary commands.",
     suggestedFix: "Remove the lifecycle script or replace it with a reviewed build step that does not run during install.",
     testSuggestion: "Run a clean install in CI and verify no unexpected network or shell commands execute."
@@ -211,7 +232,7 @@ function addDependencyFindings(
       ruleId: "dep-broad-version-range",
       title: "Broad or unpinned dependency version",
       severity: "medium",
-      confidence: "high",
+      confidence: "medium",
       riskScore: 62,
       file: filePath,
       line: lineNumber,
@@ -233,6 +254,10 @@ function addDependencyFindings(
       file: filePath,
       line: lineNumber,
       snippet: `${parsed.name}: ${previous} -> ${parsed.version}`,
+      owasp: owaspCategory("LLM03:2025"),
+      evidence: `Dependency ${parsed.name} changed from ${previous} to ${parsed.version}.`,
+      attackPath: "Dependency is downgraded -> security fixes may be removed -> known exploit paths can reappear.",
+      impact: "A downgrade can reintroduce patched vulnerabilities into the application supply chain.",
       why: "Downgrades can reintroduce known vulnerabilities or remove security fixes.",
       suggestedFix: "Keep the newer version unless there is a reviewed compatibility reason and vulnerability check.",
       testSuggestion: "Run compatibility tests and verify the downgraded version has no known vulnerabilities."
@@ -249,6 +274,10 @@ function addDependencyFindings(
       file: filePath,
       line: lineNumber,
       snippet: lineContent,
+      owasp: owaspCategory("LLM03:2025"),
+      evidence: "The package name matches a known typo of a common dependency.",
+      attackPath: "Developer installs typo package -> malicious lookalike package runs in app or install process.",
+      impact: "Typosquatting can introduce malicious code through the dependency supply chain.",
       why: "The package name resembles common typosquatting patterns.",
       suggestedFix: "Verify the intended package name and package provenance before installing.",
       testSuggestion: "Confirm the lockfile resolves to the expected maintainer and repository."

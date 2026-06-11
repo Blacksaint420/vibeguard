@@ -20,6 +20,7 @@ include:
   - "**/*"
 exclude: []
 suppressions: []
+minConfidence: high
 ```
 
 Suppress a finding by rule and file:
@@ -34,6 +35,8 @@ suppressions:
 The first parser intentionally supports the generated policy shape and simple suppressions without external YAML dependencies.
 
 The default policy has no path excludes. Full scans include `.git`, dependency folders, generated folders, large files, and binary-looking files unless you add project-specific `exclude` entries.
+
+The default policy uses `minConfidence: high` so normal reports focus on likely true positives. Use `minConfidence: medium` or `vibeguard check --min-confidence medium` for broader audit mode.
 
 Runtime controls can also be passed on the command line:
 

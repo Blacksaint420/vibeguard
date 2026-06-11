@@ -4,7 +4,7 @@ VibeGuard is a local-first CLI safety check for developers using AI coding agent
 
 > Check the code your AI just changed before you accept, commit, or merge it.
 
-The first version scans the repository you point it at and reports high-confidence insecure code, secrets, risky dependency changes, Dockerfile risks, GitHub Actions risks, and sensitive file changes. It does not upload source code.
+The first version scans the repository you point it at and reports high-confidence code, LLM application, and supply-chain vulnerabilities. Findings are mapped to the OWASP Top 10 for LLM Applications 2025 where applicable, with evidence, attack path, impact, and a concrete fix. It does not upload source code.
 
 ## Install Locally
 
@@ -48,7 +48,8 @@ Exit codes:
 
 ## What It Scans
 
-- JavaScript, TypeScript, and Python files for insecure code patterns.
+- JavaScript, TypeScript, and Python files for high-confidence insecure code and LLM application patterns.
+- OWASP LLM 2025 risks including prompt injection, sensitive information disclosure, supply chain, improper output handling, excessive agency, system prompt leakage, vector/embedding weaknesses, and unbounded consumption when there is direct code evidence.
 - Secrets with masking.
 - npm, yarn, pnpm, `requirements.txt`, and `pyproject.toml` dependency manifests.
 - Dockerfile base image risks.
@@ -56,6 +57,8 @@ Exit codes:
 - Sensitive file path changes such as `.env`, `.npmrc`, private keys, and cloud credentials.
 
 By default, `vibeguard check` walks the full repository, including generated directories, dependency directories, git metadata, large files, and binary-looking files. Use `--staged` or `--base` when you want a focused git-diff scan.
+
+Default reports use `minConfidence: high` to avoid noisy "possible issue" output. Use `--min-confidence medium` when you want audit-style review signals such as broad dependency ranges or routes without obvious auth middleware.
 
 VibeGuard does not call a remote service in this version.
 
@@ -65,11 +68,11 @@ Optional dependency vulnerability lookup is off by default. `--vuln-provider osv
 
 Output formats:
 
-- `table`: terminal report with scan summary footer.
-- `json`: automation-friendly report with warnings, scan metadata, and recommended next actions.
-- `sarif`: code-scanning compatible report with invocation metadata and recommendations.
-- `markdown`: pull request or review summary with fix priorities.
-- `html`: standalone human-readable report with summary cards and recommended next actions.
+- `table`: terminal report focused on OWASP category, impact, location, and fix priority.
+- `json`: automation-friendly report with OWASP summary, warnings, scan metadata, recommendations, evidence, attack path, and impact.
+- `sarif`: code-scanning compatible report with invocation metadata, OWASP mapping, and recommendations.
+- `markdown`: pull request or review summary grouped by OWASP LLM category with vulnerability narratives.
+- `html`: standalone human-readable report with summary cards, OWASP mapping, recommended next actions, evidence, attack path, impact, and fixes.
 
 Useful scan controls:
 
@@ -92,6 +95,8 @@ vibeguard suppress <finding_id_or_rule_id> --file src/app.js --reason "Reviewed 
 The baseline records the current finding IDs so future scans can focus on newly introduced risk. Suppressions are written to `vibeguard.yml` and should include a reason.
 
 Framework-aware checks currently include Express, Next.js, Prisma, Supabase service role usage, Firebase rules, Django CSRF exemptions, and Flask routes without obvious authentication guards.
+
+OWASP references are based on the OWASP Top 10 for LLM Applications 2025 taxonomy from the OWASP GenAI Security Project.
 
 ## Configuration
 

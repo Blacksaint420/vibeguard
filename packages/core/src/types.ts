@@ -4,6 +4,22 @@ export type Severity = "low" | "medium" | "high" | "critical";
 export type Confidence = "low" | "medium" | "high";
 export type OutputFormat = "table" | "json" | "sarif" | "markdown" | "html";
 export type ScannerName = "code" | "secrets" | "dependencies" | "docker" | "actions" | "sensitive-files";
+export type OwaspLlmCategoryId =
+  | "LLM01:2025"
+  | "LLM02:2025"
+  | "LLM03:2025"
+  | "LLM04:2025"
+  | "LLM05:2025"
+  | "LLM06:2025"
+  | "LLM07:2025"
+  | "LLM08:2025"
+  | "LLM09:2025"
+  | "LLM10:2025";
+
+export type OwaspLlmCategory = {
+  id: OwaspLlmCategoryId;
+  name: string;
+};
 
 export type ChangedLine = {
   line: number;
@@ -29,6 +45,10 @@ export type Finding = {
   file: string;
   line: number;
   snippet: string;
+  owasp?: OwaspLlmCategory;
+  evidence?: string;
+  attackPath?: string;
+  impact?: string;
   why: string;
   suggestedFix: string;
   aiFixPrompt: string;
@@ -82,6 +102,9 @@ export type ReportRecommendation = {
   ruleId: string;
   file: string;
   line: number;
+  owasp?: OwaspLlmCategory;
+  attackPath?: string;
+  impact?: string;
   suggestedFix: string;
   aiFixPrompt: string;
   blocking: boolean;

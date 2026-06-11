@@ -1,4 +1,5 @@
 import type { DiffFile, Finding } from "../../core/src/types.ts";
+import { owaspCategory } from "../../core/src/owasp.ts";
 import { scannerFinding } from "./utils.ts";
 
 const SENSITIVE_PATTERNS = [
@@ -28,6 +29,10 @@ export function runSensitiveFileScanner(files: DiffFile[]): Finding[] {
       file: file.path,
       line: file.addedLines[0]?.line ?? 1,
       snippet: file.addedLines[0]?.content ?? file.path,
+      owasp: owaspCategory("LLM02:2025"),
+      evidence: `Sensitive path changed: ${file.path}.`,
+      attackPath: "Sensitive file enters source tree -> credentials or private data become available in history, reviews, or artifacts.",
+      impact: "Exposed sensitive files can disclose API keys, environment secrets, cloud credentials, or private identities.",
       why: "Sensitive files often contain credentials, machine identities, or private environment data.",
       suggestedFix: "Remove the file from the diff, rotate any exposed credentials, and use secret storage.",
       testSuggestion: "Add ignore rules and a secret-scanning test or pre-commit check for this path."
@@ -36,4 +41,3 @@ export function runSensitiveFileScanner(files: DiffFile[]): Finding[] {
 
   return findings;
 }
-

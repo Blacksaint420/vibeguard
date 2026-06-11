@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import type { Finding, Policy, ScannerName, Severity, Suppression } from "./types.ts";
+import type { Confidence, Finding, Policy, ScannerName, Severity, Suppression } from "./types.ts";
 
 const DEFAULT_SCANNERS: ScannerName[] = [
   "code",
@@ -38,6 +38,7 @@ suppressionPolicy:
 aiPrompts:
   enabled: true
 suppressions: []
+minConfidence: high
 `;
 
 export function defaultPolicy(): Policy {
@@ -48,7 +49,7 @@ export function defaultPolicy(): Policy {
     include: ["**/*"],
     exclude: [],
     suppressions: [],
-    minConfidence: undefined,
+    minConfidence: "high",
     aiPrompts: { enabled: true }
   };
 }
@@ -80,6 +81,7 @@ export function loadPolicyFromText(text: string): Policy {
       const [key, ...rest] = trimmed.split(":");
       const value = rest.join(":").trim();
       if (key === "mode" && (value === "warn" || value === "block")) policy.mode = value;
+      if (key === "minConfidence" && isConfidence(value)) policy.minConfidence = value;
       continue;
     }
 
@@ -160,6 +162,10 @@ function isScannerName(value: string): value is ScannerName {
 
 function isSeverity(value: string): value is Severity {
   return ["low", "medium", "high", "critical"].includes(value);
+}
+
+function isConfidence(value: string): value is Confidence {
+  return value === "low" || value === "medium" || value === "high";
 }
 
 function unique<T>(values: T[]): T[] {

@@ -1,4 +1,5 @@
 import { severityRank } from "../../core/src/types.ts";
+import { summarizeOwaspFindings } from "../../core/src/owasp.ts";
 import type { CheckResult, Finding, ReportRecommendation } from "../../core/src/types.ts";
 
 type ReportLike = Finding[] | CheckResult;
@@ -10,6 +11,7 @@ export function renderJson(reportLike: ReportLike): string {
       tool: "vibeguard",
       version: "0.1.0",
       summary: report.summary,
+      owaspSummary: summarizeOwaspFindings(report.findings),
       warnings: report.warnings,
       recommendations: buildRecommendations(report),
       findings: report.findings
@@ -37,11 +39,12 @@ export function renderTable(reportLike: ReportLike): string {
     String(finding.riskScore),
     finding.file,
     String(finding.line),
+    finding.owasp ? `${finding.owasp.id} ${finding.owasp.name}` : "Code Security",
     finding.ruleId,
     finding.scanner ?? "unknown",
-    finding.snippet.replace(/\s+/g, " ").slice(0, 90)
+    finding.impact ?? finding.why
   ]);
-  const header = ["status", "severity", "confidence", "risk", "file", "line", "rule", "scanner", "snippet"];
+  const header = ["status", "severity", "confidence", "risk", "file", "line", "owasp", "rule", "scanner", "impact"];
   const widths = header.map((name, index) =>
     Math.max(name.length, ...rows.map((row) => row[index].length))
   );
@@ -63,6 +66,7 @@ export function renderMarkdown(reportLike: ReportLike): string {
   const findings = report.findings;
   const bySeverity = groupBy(findings, "severity");
   const byScanner = groupBy(findings, "scanner");
+  const owaspSummary = summarizeOwaspFindings(findings);
   const lines = [
     "## VibeGuard Security Summary",
     "",
@@ -80,6 +84,12 @@ export function renderMarkdown(reportLike: ReportLike): string {
     "### Findings By Scanner",
     "",
     ...Object.entries(byScanner).map(([scanner, count]) => `- ${scanner}: ${count}`),
+    "",
+    "### OWASP LLM Mapping",
+    "",
+    ...(owaspSummary.length === 0
+      ? ["- No OWASP LLM mapped findings."]
+      : owaspSummary.map((entry) => `- ${entry.id} ${entry.name}: ${entry.count} finding${entry.count === 1 ? "" : "s"} (${entry.blocking} blocking)`)),
     ""
   ];
 
@@ -101,12 +111,17 @@ export function renderMarkdown(reportLike: ReportLike): string {
     return lines.join("\n");
   }
 
-  lines.push("| Status | Severity | Rule | Location | Why | Suggested fix |");
-  lines.push("| --- | --- | --- | --- | --- | --- |");
   for (const finding of findings) {
-    lines.push(
-      `| ${finding.blocking ? "BLOCK" : "WARN"} | ${finding.severity} | ${finding.ruleId} | ${finding.file}:${finding.line} | ${escapeMarkdown(finding.why)} | ${escapeMarkdown(finding.suggestedFix)} |`
-    );
+    lines.push(`### ${escapeMarkdown(finding.title)}`);
+    lines.push("");
+    lines.push(`- Status: ${finding.blocking ? "BLOCK" : "WARN"}`);
+    lines.push(`- OWASP: ${finding.owasp ? `${finding.owasp.id} ${finding.owasp.name}` : "Code Security"}`);
+    lines.push(`- Location: ${finding.file}:${finding.line}`);
+    lines.push(`- Evidence: ${escapeMarkdown(finding.evidence ?? finding.snippet)}`);
+    lines.push(`- Attack path: ${escapeMarkdown(finding.attackPath ?? finding.why)}`);
+    lines.push(`- Impact: ${escapeMarkdown(finding.impact ?? finding.why)}`);
+    lines.push(`- Fix: ${escapeMarkdown(finding.suggestedFix)}`);
+    lines.push("");
   }
   lines.push("");
   return lines.join("\n");
@@ -151,6 +166,7 @@ export function renderSarif(reportLike: ReportLike): string {
                 durationMs: report.summary.durationMs,
                 truncated: report.summary.truncated,
                 baselineSuppressed: report.summary.baselineSuppressed,
+                owaspSummary: summarizeOwaspFindings(findings),
                 recommendations: buildRecommendations(report)
               }
             }
@@ -174,6 +190,10 @@ export function renderSarif(reportLike: ReportLike): string {
               confidence: finding.confidence,
               riskScore: finding.riskScore,
               blocking: finding.blocking,
+              owasp: finding.owasp,
+              evidence: finding.evidence,
+              attackPath: finding.attackPath,
+              impact: finding.impact,
               aiFixPrompt: finding.aiFixPrompt,
               testSuggestion: finding.testSuggestion
             }
@@ -189,14 +209,18 @@ export function renderSarif(reportLike: ReportLike): string {
 export function renderHtml(reportLike: ReportLike): string {
   const report = normalizeReport(reportLike);
   const recommendations = buildRecommendations(report);
+  const owaspSummary = summarizeOwaspFindings(report.findings);
   const rows = report.findings.map((finding) => [
     finding.blocking ? "BLOCK" : "WARN",
     finding.severity,
     finding.confidence,
     finding.scanner ?? "unknown",
+    finding.owasp ? `${finding.owasp.id} ${finding.owasp.name}` : "Code Security",
     finding.ruleId,
     `${finding.file}:${finding.line}`,
-    finding.why,
+    finding.evidence ?? finding.snippet,
+    finding.attackPath ?? finding.why,
+    finding.impact ?? finding.why,
     finding.suggestedFix
   ]);
   return [
@@ -223,9 +247,15 @@ export function renderHtml(reportLike: ReportLike): string {
       ? "<p>No action needed.</p>"
       : `<ol>${recommendations.map((recommendation) => `<li><strong>${escapeHtml(recommendation.title)}</strong> in ${escapeHtml(`${recommendation.file}:${recommendation.line}`)}. ${escapeHtml(recommendation.suggestedFix)}</li>`).join("")}</ol>`,
     "</section>",
+    "<section class=\"actions\">",
+    "<h2>OWASP LLM Mapping</h2>",
+    owaspSummary.length === 0
+      ? "<p>No OWASP LLM mapped findings.</p>"
+      : `<ul>${owaspSummary.map((entry) => `<li><strong>${escapeHtml(`${entry.id} ${entry.name}`)}</strong>: ${entry.count} finding${entry.count === 1 ? "" : "s"} (${entry.blocking} blocking)</li>`).join("")}</ul>`,
+    "</section>",
     "<section>",
     "<table>",
-    "<thead><tr><th>Status</th><th>Severity</th><th>Confidence</th><th>Scanner</th><th>Rule</th><th>Location</th><th>Why</th><th>Suggested fix</th></tr></thead>",
+    "<thead><tr><th>Status</th><th>Severity</th><th>Confidence</th><th>Scanner</th><th>OWASP</th><th>Rule</th><th>Location</th><th>Evidence</th><th>Attack path</th><th>Impact</th><th>Suggested fix</th></tr></thead>",
     "<tbody>",
     ...rows.map((row) => `<tr><td class="${row[0] === "BLOCK" ? "block" : "warn"}">${escapeHtml(row[0])}</td>${row.slice(1).map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`),
     "</tbody>",
@@ -264,6 +294,9 @@ export function buildRecommendations(reportLike: ReportLike, limit = 5): ReportR
       line: finding.line,
       suggestedFix: finding.suggestedFix,
       aiFixPrompt: finding.aiFixPrompt,
+      owasp: finding.owasp,
+      attackPath: finding.attackPath,
+      impact: finding.impact,
       blocking: finding.blocking
     }));
 }

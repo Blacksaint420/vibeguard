@@ -1,4 +1,5 @@
 import type { DiffFile, Finding } from "../../core/src/types.ts";
+import { owaspCategory } from "../../core/src/owasp.ts";
 import { scannerFinding } from "./utils.ts";
 
 type SecretPattern = {
@@ -34,6 +35,10 @@ export function runSecretScanner(files: DiffFile[]): Finding[] {
           file: file.path,
           line: line.line,
           snippet: maskSecretsInText(line.content),
+          owasp: owaspCategory("LLM02:2025"),
+          evidence: "A credential-like value is present in source text.",
+          attackPath: "Secret is committed or shown in review output -> unauthorized party copies it -> credential is used outside intended controls.",
+          impact: "Exposed credentials can allow account takeover, API abuse, data access, or supply-chain compromise.",
           why: "Secrets in source or diffs can be copied from local history, logs, or pull requests.",
           suggestedFix: "Remove the secret, rotate it, and load the value from a secret manager or environment variable.",
           testSuggestion: "Add a config test that fails when required secrets are missing from the environment."
@@ -63,4 +68,3 @@ export function maskSecretValue(value: string): string {
   if (value.length <= 8) return "********";
   return `${value.slice(0, 4)}****${value.slice(-4)}`;
 }
-
