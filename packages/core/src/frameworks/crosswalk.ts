@@ -4,7 +4,12 @@ import type { RuleEnterpriseContext } from "./types.ts";
 
 const RULE_VERSION = "2026.06.11";
 
-const DEFAULT_CONTEXT = (ruleId: string): RuleEnterpriseContext => ({
+type FrameworkMappingDefinition = Omit<FrameworkMapping, "sourceVersion">;
+type RuleEnterpriseContextDefinition = Omit<RuleEnterpriseContext, "frameworks"> & {
+  frameworks: FrameworkMappingDefinition[];
+};
+
+const DEFAULT_CONTEXT = (ruleId: string): RuleEnterpriseContextDefinition => ({
   rule: {
     id: ruleId,
     name: ruleId,
@@ -22,14 +27,14 @@ const DEFAULT_CONTEXT = (ruleId: string): RuleEnterpriseContext => ({
   controlGaps: []
 });
 
-const CONTEXT_BY_RULE: Record<string, RuleEnterpriseContext> = {
+const CONTEXT_BY_RULE: Record<string, RuleEnterpriseContextDefinition> = {
   "js-eval": {
     rule: stableRule("js-eval", "JavaScript eval usage", "code"),
     frameworks: [
-      frameworkMapping("owasp-llm-2025", "LLM05:2025", "Improper Output Handling"),
-      frameworkMapping("nist-ai-rmf", "MEASURE", "Analyze and assess AI risks"),
-      frameworkMapping("mitre-atlas", "AML.T0051", "LLM Prompt Injection"),
-      frameworkMapping("google-saif", "input-output-controls", "Input and output controls")
+      frameworkMappingDefinition("owasp-llm-2025", "LLM05:2025", "Improper Output Handling"),
+      frameworkMappingDefinition("nist-ai-rmf", "MEASURE", "Analyze and assess AI risks"),
+      frameworkMappingDefinition("mitre-atlas", "AML.T0051", "LLM Prompt Injection"),
+      frameworkMappingDefinition("google-saif", "input-output-controls", "Input and output controls")
     ],
     risk: {
       category: "AI application security",
@@ -43,9 +48,9 @@ const CONTEXT_BY_RULE: Record<string, RuleEnterpriseContext> = {
   "secret-github-token": {
     rule: stableRule("secret-github-token", "GitHub token in changed code", "secrets"),
     frameworks: [
-      frameworkMapping("owasp-llm-2025", "LLM02:2025", "Sensitive Information Disclosure"),
-      frameworkMapping("nist-ai-rmf", "MANAGE", "Prioritize and respond to AI risks"),
-      frameworkMapping("google-saif", "secure-secrets", "Secure secrets and credentials")
+      frameworkMappingDefinition("owasp-llm-2025", "LLM02:2025", "Sensitive Information Disclosure"),
+      frameworkMappingDefinition("nist-ai-rmf", "MANAGE", "Prioritize and respond to AI risks"),
+      frameworkMappingDefinition("google-saif", "secure-secrets", "Secure secrets and credentials")
     ],
     risk: {
       category: "Credential exposure",
@@ -68,7 +73,7 @@ export function enrichFindingWithEnterpriseContext(finding: Finding): Finding {
   return {
     ...finding,
     rule: { ...rule },
-    frameworks: frameworks.map((mapping) => ({ ...mapping })),
+    frameworks: frameworks.map((mapping) => frameworkMapping(mapping)),
     risk: { ...risk },
     controlGaps: [...controlGaps]
   };
@@ -84,16 +89,24 @@ function stableRule(id: string, name: string, scanner: RuleMetadata["scanner"]):
   };
 }
 
-function frameworkMapping(framework: FrameworkId, id: string, name: string): FrameworkMapping {
-  const catalogEntry = FRAMEWORK_CATALOG.find((entry) => entry.id === framework);
-  if (!catalogEntry) {
-    throw new Error(`Unknown framework mapping: ${framework}`);
-  }
-
+function frameworkMappingDefinition(framework: FrameworkId, id: string, name: string): FrameworkMappingDefinition {
   return {
     framework,
     id,
-    name,
+    name
+  };
+}
+
+function frameworkMapping(definition: FrameworkMappingDefinition): FrameworkMapping {
+  const catalogEntry = FRAMEWORK_CATALOG.find((entry) => entry.id === definition.framework);
+  if (!catalogEntry) {
+    throw new Error(`Unknown framework mapping: ${definition.framework}`);
+  }
+
+  return {
+    framework: definition.framework,
+    id: definition.id,
+    name: definition.name,
     sourceVersion: catalogEntry.sourceVersion
   };
 }

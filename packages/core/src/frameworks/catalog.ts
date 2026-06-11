@@ -1,6 +1,6 @@
 import type { FrameworkCatalogEntry } from "./types.ts";
 
-export const FRAMEWORK_CATALOG: FrameworkCatalogEntry[] = [
+export const FRAMEWORK_CATALOG: ReadonlyArray<Readonly<FrameworkCatalogEntry>> = Object.freeze([
   {
     id: "owasp-llm-2025",
     name: "OWASP Top 10 for LLM Applications",
@@ -25,4 +25,4 @@ export const FRAMEWORK_CATALOG: FrameworkCatalogEntry[] = [
     sourceVersion: "SAIF 2.0",
     sourceUrl: "https://saif.google/"
   }
-];
+].map((entry) => Object.freeze(entry)));

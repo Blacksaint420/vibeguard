@@ -70,6 +70,8 @@ test("framework catalog exposes expected IDs, source versions, and source URLs",
     FRAMEWORK_CATALOG.map((entry) => entry.id),
     ["owasp-llm-2025", "nist-ai-rmf", "mitre-atlas", "google-saif"]
   );
+  assert.equal(Object.isFrozen(FRAMEWORK_CATALOG), true);
+  assert.equal(FRAMEWORK_CATALOG.every((entry) => Object.isFrozen(entry)), true);
   assert.equal(FRAMEWORK_CATALOG.find((entry) => entry.id === "owasp-llm-2025")?.sourceVersion, "2025");
   assert.equal(FRAMEWORK_CATALOG.find((entry) => entry.id === "owasp-llm-2025")?.sourceUrl, "https://genai.owasp.org/llm-top-10/");
   assert.equal(FRAMEWORK_CATALOG.find((entry) => entry.id === "nist-ai-rmf")?.sourceVersion, "AI RMF 1.0 + GenAI Profile");
@@ -87,6 +89,8 @@ test("enriched framework mappings and control gaps are isolated between findings
   const first = enrichFindingWithEnterpriseContext(technicalFinding("js-eval"));
 
   first.controlGaps.push("mutated gap");
+  first.frameworks[0].sourceVersion = "mutated";
+  first.risk!.category = "Mutated risk category";
   first.frameworks.push({
     framework: "owasp-llm-2025",
     id: "MUTATED",
@@ -99,4 +103,19 @@ test("enriched framework mappings and control gaps are isolated between findings
   assert.deepEqual(second.controlGaps, ["unsafe code execution", "output handling", "least privilege"]);
   assert.equal(second.frameworks.some((entry) => entry.id === "MUTATED"), false);
   assert.equal(second.frameworks.find((entry) => entry.framework === "owasp-llm-2025")?.sourceVersion, "2025");
+  assert.equal(second.risk?.category, "AI application security");
+});
+
+test("enriched crosswalk mapping source versions match the current framework catalog", () => {
+  const catalogVersionById = new Map(FRAMEWORK_CATALOG.map((entry) => [entry.id, entry.sourceVersion]));
+  const findings = [
+    enrichFindingWithEnterpriseContext(technicalFinding("js-eval")),
+    enrichFindingWithEnterpriseContext(technicalFinding("secret-github-token"))
+  ];
+
+  for (const finding of findings) {
+    for (const mapping of finding.frameworks) {
+      assert.equal(mapping.sourceVersion, catalogVersionById.get(mapping.framework));
+    }
+  }
 });
