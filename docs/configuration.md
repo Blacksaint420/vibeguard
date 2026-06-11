@@ -18,10 +18,7 @@ blockSeverities:
   - critical
 include:
   - "**/*"
-exclude:
-  - "node_modules/**"
-  - "dist/**"
-  - "coverage/**"
+exclude: []
 suppressions: []
 ```
 
@@ -36,3 +33,4 @@ suppressions:
 
 The first parser intentionally supports the generated policy shape and simple suppressions without external YAML dependencies.
 
+The default policy has no path excludes. Full scans include `.git`, dependency folders, generated folders, large files, and binary-looking files unless you add project-specific `exclude` entries.

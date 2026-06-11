@@ -4,7 +4,7 @@ VibeGuard is a local-first CLI safety check for developers using AI coding agent
 
 > Check the code your AI just changed before you accept, commit, or merge it.
 
-The first version scans the current git diff and reports high-confidence insecure code, secrets, risky dependency changes, Dockerfile risks, GitHub Actions risks, and sensitive file changes. It does not upload source code.
+The first version scans the repository you point it at and reports high-confidence insecure code, secrets, risky dependency changes, Dockerfile risks, GitHub Actions risks, and sensitive file changes. It does not upload source code.
 
 ## Install Locally
 
@@ -20,6 +20,7 @@ This project uses Node 25+ and no runtime dependencies.
 ```bash
 vibeguard init
 vibeguard check
+vibeguard check "/Users/you/Projects/CV Maker"
 vibeguard check --staged
 vibeguard check --base origin/main
 vibeguard check --format table
@@ -38,14 +39,16 @@ Exit codes:
 
 ## What It Scans
 
-- JavaScript, TypeScript, and Python changed lines for insecure code patterns.
-- Added or changed secrets with masking.
-- npm, yarn, pnpm, `requirements.txt`, and `pyproject.toml` dependency changes.
+- JavaScript, TypeScript, and Python files for insecure code patterns.
+- Secrets with masking.
+- npm, yarn, pnpm, `requirements.txt`, and `pyproject.toml` dependency manifests.
 - Dockerfile base image risks.
 - GitHub Actions mutable references and broad permissions.
 - Sensitive file path changes such as `.env`, `.npmrc`, private keys, and cloud credentials.
 
-VibeGuard scans the local git diff only. It does not call a remote service in this version.
+By default, `vibeguard check` walks the full repository, including generated directories, dependency directories, git metadata, large files, and binary-looking files. Use `--staged` or `--base` when you want a focused git-diff scan.
+
+VibeGuard does not call a remote service in this version.
 
 ## Configuration
 
@@ -56,4 +59,3 @@ vibeguard init
 ```
 
 See [`vibeguard.yml.example`](./vibeguard.yml.example) and [`docs/configuration.md`](./docs/configuration.md).
-

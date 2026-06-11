@@ -25,10 +25,7 @@ blockSeverities:
   - critical
 include:
   - "**/*"
-exclude:
-  - "node_modules/**"
-  - "dist/**"
-  - "coverage/**"
+exclude: []
 dependencyPolicy:
   vulnerable: block
   broadVersionRange: warn
@@ -49,7 +46,7 @@ export function defaultPolicy(): Policy {
     enabledScanners: [...DEFAULT_SCANNERS],
     blockSeverities: ["high", "critical"],
     include: ["**/*"],
-    exclude: ["node_modules/**", "dist/**", "coverage/**"],
+    exclude: [],
     suppressions: [],
     aiPrompts: { enabled: true }
   };
@@ -167,4 +164,3 @@ function isSeverity(value: string): value is Severity {
 function unique<T>(values: T[]): T[] {
   return [...new Set(values)];
 }
-

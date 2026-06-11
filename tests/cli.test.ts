@@ -19,9 +19,17 @@ test("parseArgs supports check options", () => {
   assert.equal(command.format, "json");
 });
 
-test("runCli returns blocking exit code for vulnerable diff", async () => {
+test("parseArgs supports repository path for full scan", () => {
+  const command = parseArgs(["check", "/tmp/CV Maker", "--format", "json"]);
+
+  assert.equal(command.name, "check");
+  assert.equal(command.targetPath, "/tmp/CV Maker");
+  assert.equal(command.staged, false);
+});
+
+test("runCli returns blocking exit code for vulnerable staged diff", async () => {
   const writes: string[] = [];
-  const result = await runCli(["check", "--format", "json"], {
+  const result = await runCli(["check", "--staged", "--format", "json"], {
     cwd: process.cwd(),
     collectDiff: () => vulnerableDiff,
     stdout: (text) => writes.push(text),
@@ -32,6 +40,32 @@ test("runCli returns blocking exit code for vulnerable diff", async () => {
   assert.equal(result.exitCode, 1);
   assert.equal(report.findings[0].ruleId, "js-eval");
   assert.equal(report.findings[0].blocking, true);
+});
+
+test("runCli defaults to full repository scan without diff collection", async () => {
+  const writes: string[] = [];
+  let diffCalled = false;
+  const result = await runCli(["check", "--format", "json"], {
+    cwd: process.cwd(),
+    collectRepositoryFiles: () => [{
+      path: "src/app.js",
+      oldPath: "src/app.js",
+      status: "modified",
+      addedLines: [{ line: 1, content: "eval(req.body.code);" }],
+      removedLines: []
+    }],
+    collectDiff: () => {
+      diffCalled = true;
+      return vulnerableDiff;
+    },
+    stdout: (text) => writes.push(text),
+    stderr: () => {}
+  });
+  const report = JSON.parse(writes.join(""));
+
+  assert.equal(diffCalled, false);
+  assert.equal(result.exitCode, 1);
+  assert.equal(report.findings[0].ruleId, "js-eval");
 });
 
 test("runCli explain returns rule details", async () => {

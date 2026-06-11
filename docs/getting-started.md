@@ -13,10 +13,16 @@ Initialize policy:
 vibeguard init
 ```
 
-Check unstaged AI changes:
+Check the whole current repository:
 
 ```bash
 vibeguard check
+```
+
+Check another repository:
+
+```bash
+vibeguard check "/Users/you/Projects/CV Maker"
 ```
 
 Check staged changes before commit:
@@ -38,4 +44,3 @@ vibeguard check --format json
 ```
 
 VibeGuard runs locally and does not upload source code.
-

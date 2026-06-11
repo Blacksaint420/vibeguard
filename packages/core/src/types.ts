@@ -61,10 +61,12 @@ export type Policy = {
 
 export type CheckOptions = {
   cwd?: string;
+  targetPath?: string;
   staged?: boolean;
   base?: string;
   format?: OutputFormat;
   diffText?: string;
+  repositoryFiles?: DiffFile[];
   policy?: Policy;
 };
 
@@ -113,4 +115,3 @@ export function severityRank(severity: Severity): number {
   if (severity === "medium") return 2;
   return 1;
 }
-

@@ -1,18 +1,19 @@
 import { existsSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { collectGitDiff } from "../../core/src/diff.ts";
 import { explainRule } from "../../core/src/explain.ts";
 import { runCheck } from "../../core/src/engine.ts";
 import { DEFAULT_POLICY_TEXT } from "../../core/src/policy.ts";
-import type { OutputFormat } from "../../core/src/types.ts";
+import { collectRepositoryFiles } from "../../core/src/repository.ts";
+import type { DiffFile, OutputFormat } from "../../core/src/types.ts";
 import { renderFindings } from "../../output/src/formatters.ts";
 
 export type ParsedCommand =
   | { name: "init" }
   | { name: "doctor" }
   | { name: "explain"; id: string }
-  | { name: "check"; staged: boolean; base?: string; format: OutputFormat }
+  | { name: "check"; staged: boolean; base?: string; targetPath?: string; format: OutputFormat }
   | { name: "help" };
 
 export type CliEnvironment = {
@@ -20,6 +21,7 @@ export type CliEnvironment = {
   stdout?: (text: string) => void;
   stderr?: (text: string) => void;
   collectDiff?: (options: { cwd: string; staged?: boolean; base?: string }) => string;
+  collectRepositoryFiles?: (targetPath: string) => DiffFile[];
 };
 
 export type CliResult = {
@@ -39,6 +41,7 @@ export function parseArgs(argv: string[]): ParsedCommand {
   if (command === "check") {
     let staged = false;
     let base: string | undefined;
+    let targetPath: string | undefined;
     let format: OutputFormat = "table";
 
     for (let index = 0; index < rest.length; index += 1) {
@@ -54,12 +57,18 @@ export function parseArgs(argv: string[]): ParsedCommand {
         if (!isOutputFormat(value)) throw new Error("Format must be table, json, sarif, or markdown");
         format = value;
         index += 1;
+      } else if (!arg.startsWith("-") && !targetPath) {
+        targetPath = arg;
       } else {
         throw new Error(`Unknown check option: ${arg}`);
       }
     }
 
-    return { name: "check", staged, base, format };
+    if ((staged || base) && targetPath) {
+      throw new Error("A repository path cannot be combined with --staged or --base");
+    }
+
+    return { name: "check", staged, base, targetPath, format };
   }
 
   if (command === "--help" || command === "-h" || command === "help") return { name: "help" };
@@ -105,16 +114,9 @@ export async function runCli(argv: string[], environment: CliEnvironment = {}): 
       return { exitCode: 0 };
     }
 
-    const diffText = environment.collectDiff
-      ? environment.collectDiff({ cwd, staged: command.staged, base: command.base })
-      : collectGitDiff({ cwd, staged: command.staged, base: command.base });
-    const result = await runCheck({
-      cwd,
-      staged: command.staged,
-      base: command.base,
-      format: command.format,
-      diffText
-    });
+    const result = command.staged || command.base
+      ? await runDiffCheck(command, environment, cwd)
+      : await runRepositoryCheck(command, environment, cwd);
     stdout(`${renderFindings(result.findings, command.format)}${command.format === "table" ? "" : "\n"}`);
     return { exitCode: result.summary.blocking > 0 ? 1 : 0 };
   } catch (error) {
@@ -142,7 +144,9 @@ function helpText(): string {
     "",
     "Usage:",
     "  vibeguard init",
-    "  vibeguard check [--staged] [--base <branch>] [--format table|json|sarif|markdown]",
+    "  vibeguard check [path] [--format table|json|sarif|markdown]",
+    "  vibeguard check --staged [--format table|json|sarif|markdown]",
+    "  vibeguard check --base <branch> [--format table|json|sarif|markdown]",
     "  vibeguard explain <finding_id_or_rule_id>",
     "  vibeguard doctor",
     ""
@@ -153,3 +157,36 @@ function isOutputFormat(value: string | undefined): value is OutputFormat {
   return value === "table" || value === "json" || value === "sarif" || value === "markdown";
 }
 
+async function runDiffCheck(
+  command: Extract<ParsedCommand, { name: "check" }>,
+  environment: CliEnvironment,
+  cwd: string
+) {
+  const diffText = environment.collectDiff
+    ? environment.collectDiff({ cwd, staged: command.staged, base: command.base })
+    : collectGitDiff({ cwd, staged: command.staged, base: command.base });
+  return runCheck({
+    cwd,
+    staged: command.staged,
+    base: command.base,
+    format: command.format,
+    diffText
+  });
+}
+
+async function runRepositoryCheck(
+  command: Extract<ParsedCommand, { name: "check" }>,
+  environment: CliEnvironment,
+  cwd: string
+) {
+  const targetPath = command.targetPath ? resolve(cwd, command.targetPath) : cwd;
+  const repositoryFiles = environment.collectRepositoryFiles
+    ? environment.collectRepositoryFiles(targetPath)
+    : collectRepositoryFiles(targetPath);
+  return runCheck({
+    cwd,
+    targetPath,
+    format: command.format,
+    repositoryFiles
+  });
+}
