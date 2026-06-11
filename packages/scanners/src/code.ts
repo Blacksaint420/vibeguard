@@ -16,6 +16,7 @@ type Rule = {
   evidence?: string;
   attackPath?: string;
   impact?: string;
+  requiresFilePattern?: RegExp;
   why: string;
   fix: string;
   test: string;
@@ -40,15 +41,38 @@ const JS_RULES: Rule[] = [
     attackPath: "Caller invokes endpoint -> endpoint returns privileged prompt material -> attacker learns guardrails and secrets embedded in prompts.",
     impact: "Prompt leakage makes bypasses easier and can disclose sensitive operational details."
   }),
+  rule("llm10-user-controlled-token-budget", "User controls LLM token budget", "high", "high", 84, /\b(max_tokens|max_completion_tokens|maxOutputTokens)\s*:\s*(req\.|request\.|ctx\.request|params|query|body)/i, "Request-controlled token limits let callers drive model cost and latency.", "Enforce server-side token ceilings and ignore client-supplied token budgets unless clamped to a safe maximum.", "Add a test proving large client token values are capped before the LLM call.", false, {
+    owasp: owaspCategory("LLM10:2025"),
+    evidence: "An LLM token budget is assigned from request-controlled data.",
+    attackPath: "Attacker supplies large token limit -> application forwards it to model call -> model consumes excessive tokens.",
+    impact: "This can increase cost, degrade availability, or exhaust rate limits."
+  }),
+  rule("llm06-auto-tool-dangerous-sink", "Autonomous LLM tool path reaches dangerous sink", "critical", "high", 96, /\b(exec|spawn|execFile|writeFile|writeFileSync|unlink|rm)\s*\([^)]*(toolCall|tool_call|function\.arguments|arguments)/i, "Automatic tool use is connected to command or filesystem capabilities.", "Require explicit approval and strict schemas for dangerous tools; route commands through allowlisted operations only.", "Add tests proving tool calls cannot execute shell commands or write files without approval.", false, {
+    owasp: owaspCategory("LLM06:2025"),
+    evidence: "A dangerous sink consumes tool-call arguments while the file enables automatic tool choice.",
+    attackPath: "Model selects tool autonomously -> tool arguments reach command or filesystem sink -> application performs unintended action.",
+    impact: "This can allow autonomous command execution, file writes, or destructive operations.",
+    requiresFilePattern: /\btool_choice\s*:\s*["']auto["']|\btoolChoice\s*:\s*["']auto["']|\bmessage\.tool_calls\b|\btool_calls\b/i
+  }),
+  rule("llm04-untrusted-vector-ingestion", "Untrusted request content enters vector store", "high", "high", 86, /\b(addDocuments|addVectors|upsert|insert)\s*\([^)]*(req\.|request\.|ctx\.request|params|query|body)/i, "Request-controlled content is written directly into an embedding or vector store.", "Validate provenance, tenant scope, size, and content policy before indexing documents used for retrieval.", "Add a test proving untrusted documents are rejected or quarantined before vector ingestion.", false, {
+    owasp: owaspCategory("LLM04:2025"),
+    evidence: "Request-controlled content is passed into a vector-store ingestion method.",
+    attackPath: "Attacker submits content -> content is embedded and indexed -> later retrieval injects attacker content into prompts.",
+    impact: "This can poison RAG context and influence future model responses."
+  }),
+  rule("llm08-user-controlled-vector-filter", "User controls vector search filter", "high", "high", 82, /\b(query|similaritySearch|similaritySearchWithScore|search)\s*\([^)]*(filter|where)\s*:\s*(req\.|request\.|ctx\.request|params|query|body)/i, "Request-controlled vector search filters can bypass retrieval boundaries.", "Build vector filters server-side from authenticated tenant and authorization context; do not pass raw request filters.", "Add tests proving callers cannot query another tenant or restricted collection through metadata filters.", false, {
+    owasp: owaspCategory("LLM08:2025"),
+    evidence: "A vector query metadata filter is assigned from request-controlled data.",
+    attackPath: "Attacker supplies metadata filter -> vector store uses attacker filter -> retrieval crosses intended data boundary.",
+    impact: "This can disclose unauthorized embeddings, documents, or tenant data."
+  }),
   rule("js-eval", "JavaScript eval usage", "high", "high", 90, /\beval\s*\(/i, "Dynamic code execution can run attacker-controlled input.", "Replace eval with a safe parser, explicit mapping, or validated command dispatch.", "Add a test proving untrusted input is rejected instead of executed.", true, {
-    owasp: owaspCategory("LLM05:2025"),
     evidence: "The code executes a string dynamically with eval.",
     attackPath: "Untrusted text reaches eval -> runtime treats it as JavaScript.",
     impact: "This can execute attacker-controlled code in the application process.",
     unless: /\b(eval|exec|spawn|execFile)\s*\([^)]*(completion|response|llm|model|message\.content|choices\s*\[|output_text|tool_calls)/i
   }),
   rule("js-function-constructor", "Function constructor usage", "high", "high", 88, /(^|[^\w.])(?:new\s+)?Function\s*\(/, "The Function constructor executes strings as code.", "Replace dynamic function construction with explicit functions or a constrained expression parser.", "Add a test for a malicious expression string.", true, {
-    owasp: owaspCategory("LLM05:2025"),
     evidence: "The code constructs executable JavaScript from a string.",
     attackPath: "Untrusted text reaches Function constructor -> runtime compiles and executes it.",
     impact: "This can execute attacker-controlled code in the application process."
@@ -182,6 +206,7 @@ export function runCodeScanner(files: DiffFile[]): Finding[] {
         const matchTarget = ruleDefinition.stripStrings ? stripStringsAndLineComment(line.content) : line.content;
         if (!ruleDefinition.pattern.test(matchTarget)) continue;
         if (ruleDefinition.unless?.test(line.content)) continue;
+        if (ruleDefinition.requiresFilePattern && !ruleDefinition.requiresFilePattern.test(file.addedLines.map((candidate) => candidate.content).join("\n"))) continue;
         findings.push(scannerFinding({
           ruleId: ruleDefinition.id,
           title: ruleDefinition.title,
@@ -217,7 +242,7 @@ function rule(
   fix: string,
   test: string,
   stripStrings = false,
-  metadata: Pick<Rule, "owasp" | "evidence" | "attackPath" | "impact" | "unless"> = {}
+  metadata: Pick<Rule, "owasp" | "evidence" | "attackPath" | "impact" | "unless" | "requiresFilePattern"> = {}
 ): Rule {
   return { id, title, severity, confidence, riskScore, pattern, stripStrings, why, fix, test, ...metadata };
 }

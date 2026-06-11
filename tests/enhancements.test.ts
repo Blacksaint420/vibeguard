@@ -139,6 +139,46 @@ test("OWASP LLM findings explain vulnerability, evidence, attack path, and impac
   assert.equal(outputHandling?.impact?.includes("code execution"), true);
 });
 
+test("scanner covers high-confidence OWASP LLM agent and RAG vulnerabilities", async () => {
+  const result = await runCheck({
+    repositoryFiles: [
+      file("src/agent.ts", [
+        "const answer = await openai.chat.completions.create({ model: 'gpt-4.1', max_tokens: req.body.maxTokens });",
+        "const response = await openai.chat.completions.create({ tool_choice: 'auto', tools });",
+        "if (response.choices[0].message.tool_calls) exec(toolCall.function.arguments);"
+      ]),
+      file("src/rag.ts", [
+        "await vectorStore.addDocuments(req.body.documents);",
+        "const matches = await index.query({ vector, filter: req.query.filter });"
+      ])
+    ],
+    policy: defaultPolicy()
+  });
+  const byRule = new Map(result.findings.map((finding) => [finding.ruleId, finding]));
+
+  assert.equal(byRule.get("llm10-user-controlled-token-budget")?.owasp?.id, "LLM10:2025");
+  assert.equal(byRule.get("llm06-auto-tool-dangerous-sink")?.owasp?.id, "LLM06:2025");
+  assert.equal(byRule.get("llm04-untrusted-vector-ingestion")?.owasp?.id, "LLM04:2025");
+  assert.equal(byRule.get("llm08-user-controlled-vector-filter")?.owasp?.id, "LLM08:2025");
+  assert.equal(byRule.get("llm06-auto-tool-dangerous-sink")?.impact?.includes("autonomous"), true);
+});
+
+test("generic code execution remains code security unless model output reaches the sink", async () => {
+  const generic = await runCheck({
+    repositoryFiles: [file("src/app.ts", ["eval(req.body.code);"])],
+    policy: defaultPolicy()
+  });
+  const llmSpecific = await runCheck({
+    repositoryFiles: [file("src/agent.ts", ["eval(completion.choices[0].message.content);"])],
+    policy: defaultPolicy()
+  });
+
+  assert.equal(generic.findings[0].ruleId, "js-eval");
+  assert.equal(generic.findings[0].owasp, undefined);
+  assert.equal(llmSpecific.findings[0].ruleId, "llm05-output-exec");
+  assert.equal(llmSpecific.findings[0].owasp?.id, "LLM05:2025");
+});
+
 test("baseline command records accepted findings and check suppresses them", async () => {
   const root = mkdtempSync(join(tmpdir(), "vibeguard-baseline-"));
   const sourceFiles = () => [file("src/app.js", ["eval(req.body.code);"])];
