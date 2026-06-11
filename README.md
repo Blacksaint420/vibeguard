@@ -10,10 +10,11 @@ The first version scans the repository you point it at and reports high-confiden
 
 ```bash
 npm install
+npm run build
 npm link
 ```
 
-This project uses Node 25+ and no runtime dependencies.
+The published CLI runs from compiled JavaScript in `dist/` and targets Node 20+. The source tests use the local Node runtime.
 
 ## Commands
 
@@ -27,6 +28,9 @@ vibeguard check --format table
 vibeguard check --format json
 vibeguard check --format sarif
 vibeguard check --format markdown
+vibeguard check --format html
+vibeguard check --quiet --max-findings 20 --min-confidence high
+vibeguard check --vuln-provider osv
 vibeguard explain js-eval
 vibeguard doctor
 ```
@@ -49,6 +53,27 @@ Exit codes:
 By default, `vibeguard check` walks the full repository, including generated directories, dependency directories, git metadata, large files, and binary-looking files. Use `--staged` or `--base` when you want a focused git-diff scan.
 
 VibeGuard does not call a remote service in this version.
+
+Optional dependency vulnerability lookup is off by default. `--vuln-provider osv` sends package names and versions to OSV, but never uploads source code.
+
+## Reports
+
+Output formats:
+
+- `table`: terminal report with scan summary footer.
+- `json`: automation-friendly report with warnings and scan metadata.
+- `sarif`: code-scanning compatible report.
+- `markdown`: pull request or review summary.
+- `html`: standalone human-readable report.
+
+Useful scan controls:
+
+```bash
+vibeguard check --quiet
+vibeguard check --max-findings 50
+vibeguard check --min-confidence high
+vibeguard check --no-color
+```
 
 ## Configuration
 

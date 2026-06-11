@@ -34,8 +34,7 @@ The first VibeGuard rule set favors high-confidence changed-line findings.
 ## Other Scanners
 
 - Secrets: private keys, GitHub tokens, Slack tokens, cloud keys, generic credentials, authorization headers.
-- Dependencies: broad ranges, unpinned versions, downgrades, suspicious names, lockfile-only changes.
+- Dependencies: broad ranges, unpinned versions, downgrades, suspicious names, lifecycle install scripts, optional vulnerability matches, lockfile-only changes.
 - Docker: mutable or unpinned base images.
 - GitHub Actions: mutable `uses:` refs, `write-all` permissions, `pull_request_target`.
 - Sensitive files: `.env`, registry credentials, private keys, cloud credentials, kube config.
-

@@ -13,6 +13,12 @@ For full repository CI scans:
 vibeguard check --format sarif
 ```
 
+For an HTML artifact:
+
+```bash
+vibeguard check --format html > vibeguard-report.html
+```
+
 SARIF output is suitable for code-scanning style ingestion. Markdown output is suitable for pull request comments.
 
-This version does not upload source code or dependency manifests.
+This version does not upload source code. OSV vulnerability lookup is opt-in with `--vuln-provider osv`.

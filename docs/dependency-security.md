@@ -14,6 +14,16 @@ Supported first-version inputs:
 - Dockerfile `FROM` lines
 - GitHub Actions `uses:` lines
 
-The vulnerability provider interface is present, but the default provider is null/offline. This keeps the tool local-first. A future OSV-compatible provider can be added without changing scanner output.
+The default vulnerability provider is null/offline. This keeps the tool local-first.
 
-Current dependency findings focus on review risks: broad ranges, unpinned versions, visible downgrades, suspicious names, and lockfile-only changes in diff mode.
+Optional providers:
+
+```bash
+vibeguard check --vuln-provider null
+vibeguard check --vuln-provider mock
+vibeguard check --vuln-provider osv
+```
+
+`mock` is for local tests. `osv` sends dependency names and versions to OSV, but does not upload source code or repository contents.
+
+Current dependency findings focus on review risks: broad ranges, unpinned versions, visible downgrades, suspicious names, lifecycle install scripts, lockfile-only changes in diff mode, and optional vulnerability matches.

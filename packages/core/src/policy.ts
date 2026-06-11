@@ -48,6 +48,7 @@ export function defaultPolicy(): Policy {
     include: ["**/*"],
     exclude: [],
     suppressions: [],
+    minConfidence: undefined,
     aiPrompts: { enabled: true }
   };
 }

@@ -3,10 +3,16 @@
   "version": "0.1.0",
   "description": "Local-first CLI safety checks for AI-assisted code changes.",
   "type": "module",
-  "private": true,
+  "private": false,
   "bin": {
-    "vibeguard": "./packages/cli/src/index.ts"
+    "vibeguard": "./dist/packages/cli/src/index.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "docs",
+    "vibeguard.yml.example"
+  ],
   "workspaces": [
     "packages/cli",
     "packages/core",
@@ -14,10 +20,13 @@
     "packages/output"
   ],
   "scripts": {
+    "build": "node --no-warnings scripts/build.mjs",
+    "prepack": "npm run build",
     "test": "node --test tests/*.test.ts",
-    "vibeguard": "node packages/cli/src/index.ts"
+    "vibeguard": "node packages/cli/src/index.ts",
+    "vibeguard:dist": "node dist/packages/cli/src/index.js"
   },
   "engines": {
-    "node": ">=25"
+    "node": ">=20"
   }
 }

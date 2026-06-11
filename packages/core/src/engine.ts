@@ -1,23 +1,41 @@
 import { collectGitDiff, parseUnifiedDiff } from "./diff.ts";
 import { applyPolicy, defaultPolicy, loadPolicy, shouldScanFile } from "./policy.ts";
-import { collectRepositoryFiles } from "./repository.ts";
-import type { CheckOptions, CheckResult, DiffFile, Policy } from "./types.ts";
+import { collectRepository } from "./repository.ts";
+import { createVulnerabilityProvider } from "./vulnerabilities.ts";
+import type { CheckOptions, CheckResult, Confidence, DiffFile, Policy, ScanWarning } from "./types.ts";
 import { runScanners } from "../../scanners/src/index.ts";
+import { runVulnerabilityScanner } from "../../scanners/src/dependencies.ts";
 
 export async function runCheck(options: CheckOptions = {}): Promise<CheckResult> {
+  const started = Date.now();
   const cwd = options.cwd ?? process.cwd();
   const policy = options.policy ?? loadPolicy(cwd);
-  const files = collectFilesForCheck(options, cwd, policy);
-  const findings = applyPolicy(runScanners(files, policy.enabledScanners), policy);
+  const collection = collectFilesForCheck(options, cwd, policy);
+  const scannerFindings = await runScanners(collection.files, policy.enabledScanners);
+  const vulnerabilityFindings = options.vulnProvider && options.vulnProvider !== "null"
+    ? await runVulnerabilityScanner(collection.files, createVulnerabilityProvider(options.vulnProvider))
+    : [];
+  const filtered = filterFindings(
+    applyPolicy([...scannerFindings, ...vulnerabilityFindings], policy),
+    options.minConfidence ?? policy.minConfidence,
+    options.maxFindings
+  );
 
   return {
-    files,
-    findings,
+    files: collection.files,
+    findings: filtered.findings,
     summary: {
-      filesChanged: files.length,
-      findings: findings.length,
-      blocking: findings.filter((finding) => finding.blocking).length
-    }
+      filesChanged: collection.files.length,
+      filesScanned: collection.files.length,
+      findings: filtered.findings.length,
+      blocking: filtered.findings.filter((finding) => finding.blocking).length,
+      truncated: filtered.truncated,
+      durationMs: Date.now() - started,
+      scanMode: collection.scanMode,
+      targetPath: collection.targetPath,
+      warnings: collection.warnings.length
+    },
+    warnings: collection.warnings
   };
 }
 
@@ -27,16 +45,48 @@ export function runCheckFromDiff(diffText: string, policy: Policy = defaultPolic
 
 export type { DiffFile };
 
-function collectFilesForCheck(options: CheckOptions, cwd: string, policy: Policy): DiffFile[] {
+function collectFilesForCheck(options: CheckOptions, cwd: string, policy: Policy): {
+  files: DiffFile[];
+  warnings: ScanWarning[];
+  scanMode: "repository" | "diff";
+  targetPath: string;
+} {
   if (options.repositoryFiles) {
-    return options.repositoryFiles.filter((file) => shouldScanFile(file.path, policy));
+    return {
+      files: options.repositoryFiles.filter((file) => shouldScanFile(file.path, policy)),
+      warnings: [],
+      scanMode: "repository",
+      targetPath: options.targetPath ?? cwd
+    };
   }
 
   if (options.diffText || options.staged || options.base) {
     const diffText = options.diffText ?? collectGitDiff({ ...options, cwd });
-    return parseUnifiedDiff(diffText).filter((file) => shouldScanFile(file.path, policy));
+    return {
+      files: parseUnifiedDiff(diffText).filter((file) => shouldScanFile(file.path, policy)),
+      warnings: [],
+      scanMode: "diff",
+      targetPath: cwd
+    };
   }
 
   const targetPath = options.targetPath ?? cwd;
-  return collectRepositoryFiles(targetPath).filter((file) => shouldScanFile(file.path, policy));
+  const collection = collectRepository(targetPath);
+  return {
+    files: collection.files.filter((file) => shouldScanFile(file.path, policy)),
+    warnings: collection.warnings,
+    scanMode: "repository",
+    targetPath
+  };
+}
+
+function filterFindings(findings: Awaited<ReturnType<typeof applyPolicy>>, minConfidence?: Confidence, maxFindings?: number) {
+  const confidenceRank = { low: 1, medium: 2, high: 3 };
+  const minimum = minConfidence ? confidenceRank[minConfidence] : 0;
+  const confidenceFiltered = findings.filter((finding) => confidenceRank[finding.confidence] >= minimum);
+  const limited = typeof maxFindings === "number" ? confidenceFiltered.slice(0, maxFindings) : confidenceFiltered;
+  return {
+    findings: limited,
+    truncated: limited.length < confidenceFiltered.length
+  };
 }

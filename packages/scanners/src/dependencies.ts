@@ -60,6 +60,49 @@ export function runDependencyScanner(files: DiffFile[]): Finding[] {
   return findings;
 }
 
+export async function runVulnerabilityScanner(files: DiffFile[], provider: VulnerabilityProvider): Promise<Finding[]> {
+  const findings: Finding[] = [];
+  for (const dependency of extractDependencies(files)) {
+    const vulnerabilities = await provider.query(dependency.name, cleanVersion(dependency.version), dependency.ecosystem);
+    for (const vulnerability of vulnerabilities) {
+      findings.push(scannerFinding({
+        ruleId: "dep-vulnerable-package",
+        title: "Vulnerable dependency",
+        severity: vulnerability.severity,
+        confidence: "high",
+        riskScore: vulnerability.severity === "critical" ? 98 : vulnerability.severity === "high" ? 86 : 70,
+        file: dependency.file,
+        line: dependency.line,
+        snippet: `${dependency.name}@${dependency.version}`,
+        why: `${vulnerability.id}: ${vulnerability.summary}`,
+        suggestedFix: "Upgrade to a non-vulnerable version or remove the dependency.",
+        testSuggestion: "Run dependency and integration tests after upgrading the package."
+      }));
+    }
+  }
+  return findings.map((finding) => ({ ...finding, scanner: "dependencies" }));
+}
+
+export function extractDependencies(files: DiffFile[]): Array<{ name: string; version: string; ecosystem: string; file: string; line: number }> {
+  const dependencies: Array<{ name: string; version: string; ecosystem: string; file: string; line: number }> = [];
+  for (const file of files) {
+    if (!isManifest(file.path)) continue;
+    for (const line of file.addedLines) {
+      const parsed = file.path.endsWith("package.json")
+        ? parsePackageJsonDependencyLine(line.content)
+        : parseDependencyLine(file.path, line.content);
+      if (!parsed) continue;
+      dependencies.push({
+        ...parsed,
+        ecosystem: file.path.endsWith("requirements.txt") || file.path.endsWith("pyproject.toml") ? "PyPI" : "npm",
+        file: file.path,
+        line: line.line
+      });
+    }
+  }
+  return dependencies;
+}
+
 function scanPackageJsonFile(file: DiffFile, findings: Finding[]): void {
   const removedDeps = new Map<string, string>();
   let removedSection = "";
@@ -73,11 +116,31 @@ function scanPackageJsonFile(file: DiffFile, findings: Finding[]): void {
   let addedSection = "";
   for (const added of file.addedLines) {
     addedSection = packageJsonSection(added.content, addedSection);
+    if (addedSection === "scripts") {
+      addInstallScriptFinding(file.path, added.line, added.content, findings);
+    }
     if (!isDependencySection(addedSection)) continue;
     const parsed = parsePackageJsonDependencyLine(added.content);
     if (!parsed) continue;
     addDependencyFindings(file.path, added.line, added.content, parsed, removedDeps, findings);
   }
+}
+
+function addInstallScriptFinding(filePath: string, lineNumber: number, lineContent: string, findings: Finding[]): void {
+  if (!/"(preinstall|install|postinstall|prepare)"\s*:\s*"[^"]+"/.test(lineContent.trim())) return;
+  findings.push(scannerFinding({
+    ruleId: "dep-install-script",
+    title: "Package lifecycle install script",
+    severity: "high",
+    confidence: "high",
+    riskScore: 78,
+    file: filePath,
+    line: lineNumber,
+    snippet: lineContent,
+    why: "Install lifecycle scripts execute during dependency installation and can run arbitrary commands.",
+    suggestedFix: "Remove the lifecycle script or replace it with a reviewed build step that does not run during install.",
+    testSuggestion: "Run a clean install in CI and verify no unexpected network or shell commands execute."
+  }));
 }
 
 function addDependencyFindings(

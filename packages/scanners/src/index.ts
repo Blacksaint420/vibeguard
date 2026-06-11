@@ -15,8 +15,10 @@ const SCANNERS: Record<ScannerName, (files: DiffFile[]) => Finding[]> = {
   "sensitive-files": runSensitiveFileScanner
 };
 
-export function runScanners(files: DiffFile[], enabledScanners: ScannerName[]): Finding[] {
-  return enabledScanners.flatMap((name) => SCANNERS[name]?.(files) ?? []);
+export async function runScanners(files: DiffFile[], enabledScanners: ScannerName[]): Promise<Finding[]> {
+  return enabledScanners.flatMap((name) =>
+    (SCANNERS[name]?.(files) ?? []).map((finding) => ({ ...finding, scanner: name }))
+  );
 }
 
 export {
@@ -27,4 +29,3 @@ export {
   runSecretScanner,
   runSensitiveFileScanner
 };
-

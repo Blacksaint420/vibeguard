@@ -4,6 +4,7 @@ Install locally:
 
 ```bash
 npm install
+npm run build
 npm link
 ```
 
@@ -41,6 +42,24 @@ Use JSON for automation:
 
 ```bash
 vibeguard check --format json
+```
+
+Create an HTML report:
+
+```bash
+vibeguard check --format html > vibeguard-report.html
+```
+
+Limit noisy output:
+
+```bash
+vibeguard check --max-findings 25 --min-confidence high
+```
+
+Enable optional OSV dependency lookup:
+
+```bash
+vibeguard check --vuln-provider osv
 ```
 
 VibeGuard runs locally and does not upload source code.

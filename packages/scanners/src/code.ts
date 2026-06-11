@@ -9,14 +9,15 @@ type Rule = {
   confidence: "low" | "medium" | "high";
   riskScore: number;
   pattern: RegExp;
+  stripStrings?: boolean;
   why: string;
   fix: string;
   test: string;
 };
 
 const JS_RULES: Rule[] = [
-  rule("js-eval", "JavaScript eval usage", "high", "high", 90, /\beval\s*\(/i, "Dynamic code execution can run attacker-controlled input.", "Replace eval with a safe parser, explicit mapping, or validated command dispatch.", "Add a test proving untrusted input is rejected instead of executed."),
-  rule("js-function-constructor", "Function constructor usage", "high", "high", 88, /(^|[^\w.])(?:new\s+)?Function\s*\(/, "The Function constructor executes strings as code.", "Replace dynamic function construction with explicit functions or a constrained expression parser.", "Add a test for a malicious expression string."),
+  rule("js-eval", "JavaScript eval usage", "high", "high", 90, /\beval\s*\(/i, "Dynamic code execution can run attacker-controlled input.", "Replace eval with a safe parser, explicit mapping, or validated command dispatch.", "Add a test proving untrusted input is rejected instead of executed.", true),
+  rule("js-function-constructor", "Function constructor usage", "high", "high", 88, /(^|[^\w.])(?:new\s+)?Function\s*\(/, "The Function constructor executes strings as code.", "Replace dynamic function construction with explicit functions or a constrained expression parser.", "Add a test for a malicious expression string.", true),
   rule("js-sql-template-interpolation", "SQL query uses template interpolation", "high", "high", 86, /`[^`]*\b(SELECT\b[^`]*\bFROM\b|INSERT\b[^`]*\bINTO\b|UPDATE\b[^`]*\bSET\b|DELETE\b[^`]*\bFROM\b)[^`]*\$\{/i, "Interpolating values into SQL can allow injection.", "Use parameterized queries or prepared statements.", "Add a test with quote characters in user input."),
   rule("js-child-process-exec-user-input", "child_process.exec with request-derived input", "critical", "high", 96, /\bexec\s*\([^)]*(req\.|request\.|ctx\.request|params|query|body|input)/i, "Shell execution with user-controlled input can lead to command injection.", "Use execFile or spawn with an argument array and strict allowlists.", "Add a test that shell metacharacters are treated as data."),
   rule("js-log-secret", "Secret or authorization value logged", "medium", "medium", 55, /console\.(log|warn|error|info)\([^)]*(authorization|password|secret|token|api[_-]?key)/i, "Logs often outlive requests and can expose credentials.", "Remove the secret from logs or log only non-sensitive metadata.", "Add a test or lint case ensuring sensitive headers are redacted."),
@@ -53,7 +54,8 @@ export function runCodeScanner(files: DiffFile[]): Finding[] {
 
     for (const line of file.addedLines) {
       for (const ruleDefinition of rules) {
-        if (!ruleDefinition.pattern.test(line.content)) continue;
+        const matchTarget = ruleDefinition.stripStrings ? stripStringsAndLineComment(line.content) : line.content;
+        if (!ruleDefinition.pattern.test(matchTarget)) continue;
         findings.push(scannerFinding({
           ruleId: ruleDefinition.id,
           title: ruleDefinition.title,
@@ -74,10 +76,45 @@ export function runCodeScanner(files: DiffFile[]): Finding[] {
   return findings;
 }
 
-function rule(id: string, title: string, severity: Rule["severity"], confidence: Rule["confidence"], riskScore: number, pattern: RegExp, why: string, fix: string, test: string): Rule {
-  return { id, title, severity, confidence, riskScore, pattern, why, fix, test };
+function rule(id: string, title: string, severity: Rule["severity"], confidence: Rule["confidence"], riskScore: number, pattern: RegExp, why: string, fix: string, test: string, stripStrings = false): Rule {
+  return { id, title, severity, confidence, riskScore, pattern, stripStrings, why, fix, test };
 }
 
 function isTestFixtureFile(path: string): boolean {
   return /(^|\/)(__tests__|tests?|spec)\//.test(path) || /\.(test|spec)\.[cm]?[jt]sx?$/.test(path);
+}
+
+function stripStringsAndLineComment(line: string): string {
+  let output = "";
+  let quote = "";
+  let escaped = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+
+    if (!quote && char === "/" && next === "/") break;
+
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === quote) {
+        quote = "";
+      }
+      output += " ";
+      continue;
+    }
+
+    if (char === "\"" || char === "'" || char === "`") {
+      quote = char;
+      output += " ";
+      continue;
+    }
+
+    output += char;
+  }
+
+  return output;
 }

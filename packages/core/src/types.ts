@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 export type Severity = "low" | "medium" | "high" | "critical";
 export type Confidence = "low" | "medium" | "high";
-export type OutputFormat = "table" | "json" | "sarif" | "markdown";
+export type OutputFormat = "table" | "json" | "sarif" | "markdown" | "html";
 export type ScannerName = "code" | "secrets" | "dependencies" | "docker" | "actions" | "sensitive-files";
 
 export type ChangedLine = {
@@ -21,6 +21,7 @@ export type DiffFile = {
 export type Finding = {
   id: string;
   ruleId: string;
+  scanner?: ScannerName;
   title: string;
   severity: Severity;
   confidence: Confidence;
@@ -54,6 +55,7 @@ export type Policy = {
   include: string[];
   exclude: string[];
   suppressions: Suppression[];
+  minConfidence?: Confidence;
   aiPrompts: {
     enabled: boolean;
   };
@@ -67,6 +69,9 @@ export type CheckOptions = {
   format?: OutputFormat;
   diffText?: string;
   repositoryFiles?: DiffFile[];
+  minConfidence?: Confidence;
+  maxFindings?: number;
+  vulnProvider?: "null" | "mock" | "osv";
   policy?: Policy;
 };
 
@@ -75,9 +80,21 @@ export type CheckResult = {
   files: DiffFile[];
   summary: {
     filesChanged: number;
+    filesScanned: number;
     findings: number;
     blocking: number;
+    truncated: boolean;
+    durationMs: number;
+    scanMode: "repository" | "diff";
+    targetPath: string;
+    warnings: number;
   };
+  warnings: ScanWarning[];
+};
+
+export type ScanWarning = {
+  path: string;
+  message: string;
 };
 
 export type Vulnerability = {
@@ -90,7 +107,7 @@ export type Vulnerability = {
 
 export type VulnerabilityProvider = {
   name: string;
-  query(packageName: string, version?: string): Promise<Vulnerability[]>;
+  query(packageName: string, version?: string, ecosystem?: string): Promise<Vulnerability[]>;
 };
 
 export function createFindingId(ruleId: string, file: string, line: number, snippet: string): string {
