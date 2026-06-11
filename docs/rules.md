@@ -1,12 +1,14 @@
 # Rules
 
-The default VibeGuard report favors high-confidence findings and maps them to OWASP Top 10 for LLM Applications 2025 where applicable. Lower-confidence audit signals still exist in the scanners, but normal `vibeguard check` output hides them through `minConfidence: high`.
+The default VibeGuard report favors exploitable, high-confidence findings and maps them to OWASP Top 10 for LLM Applications 2025 where applicable. Lower-confidence audit signals still exist in the scanners, but normal `vibeguard check` output hides them through `minConfidence: high`.
+
+Default code and secret/PII findings are limited to first-party source paths. Vendored and generated paths such as `node_modules`, `.worktrees`, `dist`, `build`, `coverage`, `.next`, and `.git` are still collected by full scans, but their code examples are not treated as exploitable first-party findings. Dependency vulnerability inventory is built from first-party manifests and lockfiles.
 
 ## OWASP LLM 2025 Coverage
 
 - `LLM01:2025 Prompt Injection`: user-controlled content enters system or developer prompts.
-- `LLM02:2025 Sensitive Information Disclosure`: secrets, sensitive files, and public data rules.
-- `LLM03:2025 Supply Chain`: install scripts, vulnerable packages, dependency downgrades, suspicious package names, insecure lockfile URLs, mutable Docker images, and mutable CI components.
+- `LLM02:2025 Sensitive Information Disclosure`: concrete tokens, credentials, private keys, high-confidence PII, and public data rules.
+- `LLM03:2025 Supply Chain`: dependency/component versions confirmed vulnerable by a vulnerability provider.
 - `LLM04:2025 Data and Model Poisoning`: untrusted request content is written directly into vector or embedding stores.
 - `LLM05:2025 Improper Output Handling`: LLM output reaches code execution sinks.
 - `LLM06:2025 Excessive Agency`: automatic tool calls are connected to command, file-write, or destructive sinks.
@@ -61,8 +63,8 @@ The default VibeGuard report favors high-confidence findings and maps them to OW
 
 ## Other Scanners
 
-- Secrets: private keys, GitHub tokens, Slack tokens, cloud keys, generic credentials, authorization headers.
-- Dependencies: lifecycle install scripts, lockfile install-script metadata, insecure lockfile resolved URLs, vulnerable package matches, downgrades, and suspicious package names. Broad ranges and lockfile-only changes require `--min-confidence medium`.
-- Docker: mutable or unpinned base images.
-- GitHub Actions: mutable `uses:` refs, `write-all` permissions, `pull_request_target`.
-- Sensitive files: `.env`, registry credentials, private keys, cloud credentials, kube config.
+- Secrets and PII: private keys, GitHub tokens, Slack tokens, cloud keys, authorization headers, US SSNs, and credit card numbers with checksum validation.
+- Dependencies: default LLM03 findings require vulnerable package matches from `--vuln-provider mock|osv`. Lifecycle install scripts, lockfile install-script metadata, insecure lockfile URLs, downgrades, suspicious names, broad ranges, and lockfile-only changes require `--min-confidence medium`.
+- Docker: mutable or unpinned base images require `--min-confidence medium`.
+- GitHub Actions: mutable `uses:` refs, `write-all` permissions, and `pull_request_target` require `--min-confidence medium`.
+- Sensitive file path changes require `--min-confidence medium`; concrete secrets inside those files are still default findings.

@@ -4,7 +4,7 @@ VibeGuard is a local-first CLI safety check for developers using AI coding agent
 
 > Check the code your AI just changed before you accept, commit, or merge it.
 
-The first version scans the repository you point it at and reports high-confidence code, LLM application, and supply-chain vulnerabilities. Findings are mapped to the OWASP Top 10 for LLM Applications 2025 where applicable, with evidence, attack path, impact, and a concrete fix. It does not upload source code.
+The first version scans the repository you point it at and reports exploitable code, LLM application, secret/PII, and confirmed vulnerable dependency findings. Findings are mapped to the OWASP Top 10 for LLM Applications 2025 where applicable, with evidence, attack path, impact, and a concrete fix. It does not upload source code.
 
 ## Install Locally
 
@@ -49,8 +49,8 @@ Exit codes:
 ## What It Scans
 
 - JavaScript, TypeScript, and Python files for high-confidence insecure code and LLM application patterns.
-- OWASP LLM 2025 risks including prompt injection, sensitive information disclosure, supply chain, improper output handling, excessive agency, system prompt leakage, vector/embedding weaknesses, and unbounded consumption when there is direct code evidence.
-- Secrets with masking.
+- OWASP LLM 2025 risks including prompt injection, sensitive information disclosure, vulnerable dependency supply chain, improper output handling, excessive agency, system prompt leakage, vector/embedding weaknesses, and unbounded consumption when there is direct code evidence.
+- Concrete tokens, credentials, private keys, and high-confidence PII with masking.
 - npm, yarn, pnpm, `requirements.txt`, and `pyproject.toml` dependency manifests.
 - Dockerfile base image risks.
 - GitHub Actions mutable references and broad permissions.
@@ -58,11 +58,11 @@ Exit codes:
 
 By default, `vibeguard check` walks the full repository, including generated directories, dependency directories, git metadata, large files, and binary-looking files. Use `--staged` or `--base` when you want a focused git-diff scan.
 
-Default reports use `minConfidence: high` to avoid noisy "possible issue" output. Use `--min-confidence medium` when you want audit-style review signals such as broad dependency ranges or routes without obvious auth middleware.
+Default reports use `minConfidence: high` and only include findings with direct exploit evidence. Vendored/generated code examples are scanned but not reported as default exploitable code or PII findings; vulnerable dependency versions are handled through dependency manifests and lockfiles. Use `--min-confidence medium` when you want audit-style review signals such as install scripts, mutable build references, sensitive file paths, broad dependency ranges, or routes without obvious auth middleware.
 
 VibeGuard does not call a remote service in this version.
 
-Optional dependency vulnerability lookup is off by default. `--vuln-provider osv` sends package names and versions to OSV, but never uploads source code.
+Optional dependency vulnerability lookup is off by default. LLM03 supply-chain findings require a vulnerable package/version match from a provider such as OSV. `--vuln-provider osv` sends package names and versions to OSV, but never uploads source code.
 
 ## Reports
 

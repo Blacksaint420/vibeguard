@@ -1,6 +1,6 @@
 # Dependency Security
 
-VibeGuard checks dependency manifests and component references during full-repository scans and explicit diff scans. It does not currently resolve and audit the entire transitive dependency tree.
+VibeGuard checks dependency manifests and component references during full-repository scans and explicit diff scans. Default LLM03 supply-chain findings require a confirmed vulnerable package/version match from a vulnerability provider.
 
 Supported first-version inputs:
 
@@ -14,7 +14,7 @@ Supported first-version inputs:
 - Dockerfile `FROM` lines
 - GitHub Actions `uses:` lines
 
-The default vulnerability provider is null/offline. This keeps the tool local-first.
+The default vulnerability provider is null/offline. This keeps the tool local-first and means no LLM03 vulnerable-package findings are produced unless you enable a provider.
 
 Optional providers:
 
@@ -26,4 +26,4 @@ vibeguard check --vuln-provider osv
 
 `mock` is for local tests. `osv` sends dependency names and versions to OSV, but does not upload source code or repository contents.
 
-Current dependency findings focus on review risks: broad ranges, unpinned versions, visible downgrades, suspicious names, lifecycle install scripts, lockfile-only changes in diff mode, and optional vulnerability matches.
+Default dependency findings focus on confirmed vulnerable versions only. Review signals such as broad ranges, unpinned versions, visible downgrades, suspicious names, lifecycle install scripts, and lockfile-only changes are available with `--min-confidence medium`, but they are not treated as default LLM03 vulnerabilities.

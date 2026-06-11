@@ -55,7 +55,6 @@ export function runDependencyScanner(files: DiffFile[]): Finding[] {
         file: file.path,
         line: file.addedLines[0]?.line ?? 1,
         snippet: file.addedLines[0]?.content ?? file.path,
-        owasp: owaspCategory("LLM03:2025"),
         evidence: "A lockfile changed without a matching dependency manifest change in the same scan.",
         attackPath: "Attacker alters resolved package metadata -> install uses changed lockfile -> unreviewed code enters the application.",
         impact: "Lockfile-only changes can hide dependency substitution or dependency confusion in code review.",
@@ -76,13 +75,12 @@ function scanLockfile(file: DiffFile, findings: Finding[]): void {
       findings.push(scannerFinding({
         ruleId: "dep-lockfile-install-script",
         title: "Resolved package has install script",
-        severity: "high",
-        confidence: "high",
+        severity: "medium",
+        confidence: "medium",
         riskScore: 78,
         file: file.path,
         line: added.line,
         snippet: added.content,
-        owasp: owaspCategory("LLM03:2025"),
         evidence: "The resolved dependency metadata marks a package as having an install lifecycle script.",
         attackPath: "Package install runs lifecycle script -> script executes commands in developer or CI environment.",
         impact: "A compromised package can execute arbitrary code during install and steal credentials or alter builds.",
@@ -96,13 +94,12 @@ function scanLockfile(file: DiffFile, findings: Finding[]): void {
       findings.push(scannerFinding({
         ruleId: "dep-lockfile-insecure-resolved-url",
         title: "Lockfile resolves package over HTTP",
-        severity: "high",
-        confidence: "high",
+        severity: "medium",
+        confidence: "medium",
         riskScore: 82,
         file: file.path,
         line: added.line,
         snippet: added.content,
-        owasp: owaspCategory("LLM03:2025"),
         evidence: "The lockfile resolves a package tarball with an http:// URL.",
         attackPath: "Installer downloads package over HTTP -> network attacker tampers with package -> compromised code is installed.",
         impact: "The build can consume attacker-modified dependency code.",
@@ -144,6 +141,12 @@ export async function runVulnerabilityScanner(files: DiffFile[], provider: Vulne
 export function extractDependencies(files: DiffFile[]): Array<{ name: string; version: string; ecosystem: string; file: string; line: number }> {
   const dependencies: Array<{ name: string; version: string; ecosystem: string; file: string; line: number }> = [];
   for (const file of files) {
+    if (shouldSkipDependencyInventory(file.path)) continue;
+    if (file.path.endsWith("package-lock.json") || file.path.endsWith("npm-shrinkwrap.json")) {
+      dependencies.push(...extractPackageLockDependencies(file));
+      continue;
+    }
+
     if (!isManifest(file.path)) continue;
     for (const line of file.addedLines) {
       const parsed = file.path.endsWith("package.json")
@@ -158,7 +161,7 @@ export function extractDependencies(files: DiffFile[]): Array<{ name: string; ve
       });
     }
   }
-  return dependencies;
+  return uniqueDependencies(dependencies);
 }
 
 function scanPackageJsonFile(file: DiffFile, findings: Finding[]): void {
@@ -189,13 +192,12 @@ function addInstallScriptFinding(filePath: string, lineNumber: number, lineConte
   findings.push(scannerFinding({
     ruleId: "dep-install-script",
     title: "Package lifecycle install script",
-    severity: "high",
-    confidence: "high",
+    severity: "medium",
+    confidence: "medium",
     riskScore: 78,
     file: filePath,
     line: lineNumber,
     snippet: lineContent,
-    owasp: owaspCategory("LLM03:2025"),
     evidence: "package.json defines an install lifecycle script.",
     attackPath: "Developer or CI runs install -> lifecycle script executes -> script can run arbitrary commands.",
     impact: "Install scripts can exfiltrate tokens, modify build outputs, or install malicious payloads.",
@@ -248,13 +250,12 @@ function addDependencyFindings(
     findings.push(scannerFinding({
       ruleId: "dep-version-downgrade",
       title: "Dependency version downgrade",
-      severity: "high",
-      confidence: "high",
+      severity: "medium",
+      confidence: "medium",
       riskScore: 80,
       file: filePath,
       line: lineNumber,
       snippet: `${parsed.name}: ${previous} -> ${parsed.version}`,
-      owasp: owaspCategory("LLM03:2025"),
       evidence: `Dependency ${parsed.name} changed from ${previous} to ${parsed.version}.`,
       attackPath: "Dependency is downgraded -> security fixes may be removed -> known exploit paths can reappear.",
       impact: "A downgrade can reintroduce patched vulnerabilities into the application supply chain.",
@@ -268,13 +269,12 @@ function addDependencyFindings(
     findings.push(scannerFinding({
       ruleId: "dep-suspicious-package-name",
       title: "Suspicious package name",
-      severity: "high",
+      severity: "medium",
       confidence: "medium",
       riskScore: 74,
       file: filePath,
       line: lineNumber,
       snippet: lineContent,
-      owasp: owaspCategory("LLM03:2025"),
       evidence: "The package name matches a known typo of a common dependency.",
       attackPath: "Developer installs typo package -> malicious lookalike package runs in app or install process.",
       impact: "Typosquatting can introduce malicious code through the dependency supply chain.",
@@ -346,6 +346,52 @@ function isVersionDowngrade(previous: string, next: string): boolean {
 
 function cleanVersion(version: string): string {
   return version.replace(/^[=<>!~^\s]+/, "").replace(/[^0-9.].*$/, "");
+}
+
+function extractPackageLockDependencies(file: DiffFile): Array<{ name: string; version: string; ecosystem: string; file: string; line: number }> {
+  const dependencies: Array<{ name: string; version: string; ecosystem: string; file: string; line: number }> = [];
+  let packageName = "";
+  let packageLine = 1;
+
+  for (const line of file.addedLines) {
+    const packageBlock = /^\s*"node_modules\/([^"]+)"\s*:\s*\{/.exec(line.content);
+    if (packageBlock) {
+      packageName = packageBlock[1];
+      packageLine = line.line;
+      continue;
+    }
+
+    if (!packageName) continue;
+    const version = /^\s*"version"\s*:\s*"([^"]+)"/.exec(line.content);
+    if (version) {
+      dependencies.push({
+        name: packageName,
+        version: version[1],
+        ecosystem: "npm",
+        file: file.path,
+        line: packageLine
+      });
+      packageName = "";
+    }
+  }
+
+  return dependencies;
+}
+
+function shouldSkipDependencyInventory(path: string): boolean {
+  return /(^|\/)(node_modules|dist|build|coverage|\.next|\.git|\.worktrees)(\/|$)/.test(path);
+}
+
+function uniqueDependencies(
+  dependencies: Array<{ name: string; version: string; ecosystem: string; file: string; line: number }>
+): Array<{ name: string; version: string; ecosystem: string; file: string; line: number }> {
+  const seen = new Set<string>();
+  return dependencies.filter((dependency) => {
+    const key = `${dependency.ecosystem}\0${dependency.name}\0${dependency.version}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function isManifest(path: string): boolean {

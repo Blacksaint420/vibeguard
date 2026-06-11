@@ -34,3 +34,7 @@ export function isJavaScriptFile(path: string): boolean {
 export function isPythonFile(path: string): boolean {
   return /\.py$/.test(path);
 }
+
+export function isVendoredOrGeneratedPath(path: string): boolean {
+  return /(^|\/)(node_modules|dist|build|coverage|\.next|\.git|\.worktrees)(\/|$)/.test(path);
+}

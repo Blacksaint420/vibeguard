@@ -1,7 +1,7 @@
 import type { DiffFile, Finding } from "../../core/src/types.ts";
 import { owaspCategory } from "../../core/src/owasp.ts";
 import { maskSecretsInText } from "./secrets.ts";
-import { isJavaScriptFile, isPythonFile, scannerFinding } from "./utils.ts";
+import { isJavaScriptFile, isPythonFile, isVendoredOrGeneratedPath, scannerFinding } from "./utils.ts";
 
 type Rule = {
   id: string;
@@ -191,6 +191,7 @@ export function runCodeScanner(files: DiffFile[]): Finding[] {
   const findings: Finding[] = [];
 
   for (const file of files) {
+    if (isVendoredOrGeneratedPath(file.path)) continue;
     if (isTestFixtureFile(file.path)) continue;
     const rules = isJavaScriptFile(file.path)
       ? JS_RULES

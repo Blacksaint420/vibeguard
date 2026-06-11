@@ -9,7 +9,8 @@ import { runCheck } from "../packages/core/src/engine.ts";
 import { collectRepository } from "../packages/core/src/repository.ts";
 import { defaultPolicy } from "../packages/core/src/policy.ts";
 import { runCodeScanner } from "../packages/scanners/src/code.ts";
-import { runDependencyScanner } from "../packages/scanners/src/dependencies.ts";
+import { extractDependencies, runDependencyScanner } from "../packages/scanners/src/dependencies.ts";
+import { runSecretScanner } from "../packages/scanners/src/secrets.ts";
 import { renderHtml, renderJson, renderMarkdown, renderSarif } from "../packages/output/src/formatters.ts";
 
 function file(path: string, lines: string[], removedLines: string[] = []) {
@@ -110,11 +111,135 @@ test("default scans focus on OWASP LLM true positives and hide noisy review sign
   assert.equal(ruleIds.includes("js-express-route-no-obvious-auth"), false);
   assert.equal(ruleIds.includes("dep-new-or-changed"), false);
   assert.equal(ruleIds.includes("dep-broad-version-range"), false);
+  assert.equal(ruleIds.includes("dep-install-script"), false);
   assert.equal(ruleIds.includes("llm01-direct-prompt-injection"), true);
   assert.equal(ruleIds.includes("llm05-output-exec"), true);
-  assert.equal(ruleIds.includes("dep-install-script"), true);
   assert.equal(result.findings.every((finding) => finding.confidence === "high"), true);
   assert.equal(result.findings.every((finding) => finding.owasp?.id?.startsWith("LLM")), true);
+});
+
+test("strict default excludes generic credentials and supply-chain heuristics", async () => {
+  const result = await runCheck({
+    repositoryFiles: [
+      file(".env.example", [
+        "PASSWORD=development-password",
+        "API_KEY=replace-me"
+      ]),
+      file("package.json", [
+        "\"scripts\": {",
+        "\"postinstall\": \"node scripts/setup.js\"",
+        "}",
+        "\"dependencies\": {",
+        "\"express\": \"^4.18.0\"",
+        "}"
+      ]),
+      file("package-lock.json", [
+        "\"node_modules/native-builder\": {",
+        "\"version\": \"1.0.0\",",
+        "\"hasInstallScript\": true",
+        "}"
+      ])
+    ],
+    policy: defaultPolicy()
+  });
+
+  assert.deepEqual(result.findings.map((finding) => finding.ruleId), []);
+});
+
+test("strict default excludes vendored and generated code or PII examples", async () => {
+  const result = await runCheck({
+    repositoryFiles: [
+      file("node_modules/pkg/index.js", [
+        "eval(req.body.code);",
+        "const card = 'CARD_TEST_VALUE';"
+      ]),
+      file(".worktrees/old-app/src/server.js", [
+        "exec(req.query.command);"
+      ]),
+      file("dist/assets/bundle.js", [
+        "new Function(req.body.code)();"
+      ]),
+      file("src/server.js", [
+        "eval(req.body.code);"
+      ])
+    ],
+    policy: defaultPolicy()
+  });
+
+  assert.deepEqual(
+    result.findings.map((finding) => `${finding.ruleId}:${finding.file}`),
+    ["js-eval:src/server.js"]
+  );
+});
+
+test("LLM02 reports only concrete tokens credentials and high-confidence PII", () => {
+  const findings = runSecretScanner([
+    file(".env", [
+      "GITHUB_TOKEN=GITHUB_TOKEN_TEST_VALUE",
+      "AWS_ACCESS_KEY_ID=AWS_ACCESS_KEY_TEST_VALUE",
+      "CUSTOMER_SSN=SSN_TEST_VALUE",
+      "CARD_NUMBER=CARD_TEST_VALUE",
+      "PASSWORD=development-password"
+    ])
+  ]);
+  const ruleIds = findings.map((finding) => finding.ruleId);
+
+  assert.equal(ruleIds.includes("secret-github-token"), true);
+  assert.equal(ruleIds.includes("secret-aws-access-key"), true);
+  assert.equal(ruleIds.includes("pii-us-ssn"), true);
+  assert.equal(ruleIds.includes("pii-credit-card"), true);
+  assert.equal(ruleIds.includes("secret-generic-credential"), false);
+  assert.equal(findings.every((finding) => finding.owasp?.id === "LLM02:2025"), true);
+});
+
+test("LLM03 default reports confirmed vulnerable dependency versions only", async () => {
+  const result = await runCheck({
+    repositoryFiles: [
+      file("package.json", [
+        "\"scripts\": {",
+        "\"postinstall\": \"node scripts/setup.js\"",
+        "}",
+        "\"dependencies\": {",
+        "\"vulnerable-package\": \"1.0.0\"",
+        "\"express\": \"^4.18.0\"",
+        "}"
+      ])
+    ],
+    policy: defaultPolicy(),
+    vulnProvider: "mock"
+  });
+  const ruleIds = result.findings.map((finding) => finding.ruleId);
+
+  assert.deepEqual(ruleIds, ["dep-vulnerable-package"]);
+  assert.equal(result.findings[0].owasp?.id, "LLM03:2025");
+});
+
+test("vulnerability inventory uses project lockfiles and ignores vendored package manifests", () => {
+  const dependencies = extractDependencies([
+    file("package-lock.json", [
+      "\"node_modules/vulnerable-package\": {",
+      "\"version\": \"1.0.0\",",
+      "}",
+      "\"node_modules/@scope/risky\": {",
+      "\"version\": \"2.3.4\",",
+      "}"
+    ]),
+    file("node_modules/vulnerable-package/package.json", [
+      "\"dependencies\": {",
+      "\"ignored-vendored-package\": \"9.9.9\"",
+      "}"
+    ]),
+    file(".worktrees/old-app/package.json", [
+      "\"dependencies\": {",
+      "\"ignored-worktree-package\": \"1.0.0\"",
+      "}"
+    ])
+  ]);
+
+  assert.deepEqual(
+    dependencies.map((dependency) => `${dependency.name}@${dependency.version}`).sort(),
+    ["@scope/risky@2.3.4", "vulnerable-package@1.0.0"]
+  );
 });
 
 test("OWASP LLM findings explain vulnerability, evidence, attack path, and impact", async () => {

@@ -1,5 +1,4 @@
 import type { DiffFile, Finding } from "../../core/src/types.ts";
-import { owaspCategory } from "../../core/src/owasp.ts";
 import { scannerFinding } from "./utils.ts";
 
 export function runDockerfileScanner(files: DiffFile[]): Finding[] {
@@ -15,13 +14,12 @@ export function runDockerfileScanner(files: DiffFile[]): Finding[] {
         findings.push(scannerFinding({
           ruleId: "docker-base-latest",
           title: "Docker base image uses latest",
-          severity: "high",
-          confidence: "high",
+          severity: "medium",
+          confidence: "medium",
           riskScore: 82,
           file: file.path,
           line: line.line,
           snippet: line.content,
-          owasp: owaspCategory("LLM03:2025"),
           evidence: "Dockerfile uses a mutable latest base image tag.",
           attackPath: "Base image tag changes upstream -> build pulls new image -> unreviewed code enters runtime.",
           impact: "Mutable images can silently change the deployed LLM application environment.",
@@ -34,12 +32,11 @@ export function runDockerfileScanner(files: DiffFile[]): Finding[] {
           ruleId: "docker-base-unpinned",
           title: "Docker base image is unpinned",
           severity: "medium",
-          confidence: "high",
+          confidence: "medium",
           riskScore: 60,
           file: file.path,
           line: line.line,
           snippet: line.content,
-          owasp: owaspCategory("LLM03:2025"),
           evidence: "Dockerfile uses an image without a version tag or digest.",
           attackPath: "Unpinned image resolves differently over time -> build consumes unreviewed base image.",
           impact: "The runtime environment can drift and inherit vulnerable or malicious components.",

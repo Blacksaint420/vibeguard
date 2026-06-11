@@ -1,5 +1,4 @@
 import type { DiffFile, Finding } from "../../core/src/types.ts";
-import { owaspCategory } from "../../core/src/owasp.ts";
 import { scannerFinding } from "./utils.ts";
 
 export function runActionsScanner(files: DiffFile[]): Finding[] {
@@ -14,13 +13,12 @@ export function runActionsScanner(files: DiffFile[]): Finding[] {
           findings.push(scannerFinding({
             ruleId: "gha-mutable-action-ref",
             title: "GitHub Action uses mutable reference",
-            severity: "high",
-            confidence: "high",
+            severity: "medium",
+            confidence: "medium",
             riskScore: 82,
             file: file.path,
             line: line.line,
             snippet: line.content,
-            owasp: owaspCategory("LLM03:2025"),
             evidence: "GitHub Actions workflow references an action without a full commit SHA.",
             attackPath: "Action tag changes upstream -> CI runs changed third-party code -> secrets or build output can be compromised.",
             impact: "Mutable action references can introduce malicious code into CI for the LLM application.",
@@ -35,13 +33,12 @@ export function runActionsScanner(files: DiffFile[]): Finding[] {
         findings.push(scannerFinding({
           ruleId: "gha-write-all-permissions",
           title: "GitHub workflow grants write-all permissions",
-          severity: "high",
-          confidence: "high",
+          severity: "medium",
+          confidence: "medium",
           riskScore: 86,
           file: file.path,
           line: line.line,
           snippet: line.content,
-          owasp: owaspCategory("LLM03:2025"),
           evidence: "Workflow grants write-all permissions.",
           attackPath: "Compromised workflow step gets broad token -> token writes to repository, packages, or releases.",
           impact: "Overprivileged CI can enable supply-chain compromise and unauthorized release changes.",
@@ -61,7 +58,6 @@ export function runActionsScanner(files: DiffFile[]): Finding[] {
           file: file.path,
           line: line.line,
           snippet: line.content,
-          owasp: owaspCategory("LLM03:2025"),
           evidence: "Workflow uses pull_request_target.",
           attackPath: "Fork pull request influences privileged workflow -> secrets or write token may be exposed.",
           impact: "Misused pull_request_target can compromise CI credentials or repository state.",
