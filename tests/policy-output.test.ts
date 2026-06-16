@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { applyPolicy, defaultPolicy, loadPolicyFromText } from "../packages/core/src/policy.ts";
 import { runCheckFromDiff } from "../packages/core/src/engine.ts";
 import { createFindingId } from "../packages/core/src/types.ts";
-import { renderJson, renderMarkdown, renderSarif, renderTable } from "../packages/output/src/formatters.ts";
+import { renderJson, renderMarkdown, renderRiskJson, renderSarif, renderTable } from "../packages/output/src/formatters.ts";
 
 function finding(overrides = {}) {
   const base = {
@@ -64,6 +64,45 @@ test("formatters render table, JSON, SARIF, and Markdown", () => {
   assert.equal(sarif.runs[0].results[0].ruleId, "js-eval");
   assert.equal(table.includes("js-eval"), true);
   assert.equal(markdown.includes("## VibeGuard Security Summary"), true);
+});
+
+test("renderRiskJson emits GRC risk report with technical evidence", () => {
+  const findings = applyPolicy([
+    finding({
+      rule: {
+        id: "js-eval",
+        name: "JavaScript eval",
+        version: "2026.06.11",
+        stability: "stable",
+        scanner: "code"
+      },
+      frameworks: [
+        {
+          framework: "owasp-llm-2025",
+          id: "LLM05:2025",
+          name: "Improper Output Handling",
+          sourceVersion: "2025"
+        }
+      ],
+      risk: {
+        category: "AI application security",
+        likelihood: "high",
+        impact: "high",
+        severity: "high",
+        controlOwner: "engineering"
+      },
+      controlGaps: ["Unsafe dynamic code execution"]
+    })
+  ], defaultPolicy());
+
+  const report = JSON.parse(renderRiskJson(findings));
+
+  assert.equal(report.tool, "vibeguard");
+  assert.equal(report.reportType, "grc-risk");
+  assert.equal(report.riskSummary.totalFindings, 1);
+  assert.equal(report.risks[0].technicalEvidence[0].ruleId, "js-eval");
+  assert.equal(report.risks[0].technicalEvidence[0].file, "src/app.js");
+  assert.equal(report.risks[0].technicalEvidence[0].line, 3);
 });
 
 test("runCheck enriches findings with enterprise context before rendering", async () => {

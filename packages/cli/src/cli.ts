@@ -192,15 +192,15 @@ function helpText(): string {
     "",
     "Usage:",
     "  vibeguard init",
-    "  vibeguard check [path] [--format table|json|sarif|markdown|html]",
-    "  vibeguard check --staged [--format table|json|sarif|markdown|html]",
-    "  vibeguard check --base <branch> [--format table|json|sarif|markdown|html]",
+    "  vibeguard check [path] [--format table|json|sarif|markdown|html|risk-json]",
+    "  vibeguard check --staged [--format table|json|sarif|markdown|html|risk-json]",
+    "  vibeguard check --base <branch> [--format table|json|sarif|markdown|html|risk-json]",
     "  vibeguard check [--baseline vibeguard-baseline.json]",
     "  vibeguard check [--output report.json]",
     "  vibeguard check [--quiet] [--max-findings <n>] [--min-confidence low|medium|high]",
     "  vibeguard check [--vuln-provider null|mock|osv]",
     "  vibeguard baseline [path] [--output vibeguard-baseline.json]",
-    "  vibeguard report [path] [--format json|sarif|markdown|html] [--output report.html]",
+    "  vibeguard report [path] [--format json|sarif|markdown|html|risk-json] [--output report.html]",
     "  vibeguard suppress <finding_id_or_rule_id> [--file <path>] [--line <n>] [--reason <text>]",
     "  vibeguard explain <finding_id_or_rule_id>",
     "  vibeguard doctor",
@@ -209,7 +209,7 @@ function helpText(): string {
 }
 
 function isOutputFormat(value: string | undefined): value is OutputFormat {
-  return value === "table" || value === "json" || value === "sarif" || value === "markdown" || value === "html";
+  return value === "table" || value === "json" || value === "sarif" || value === "markdown" || value === "html" || value === "risk-json";
 }
 
 async function runDiffCheck(
@@ -286,7 +286,7 @@ function parseScanOptions(rest: string[], commandName: string, defaultFormat: Ou
       index += 1;
     } else if (arg === "--format") {
       const value = rest[index + 1];
-      if (!isOutputFormat(value)) throw new Error("Format must be table, json, sarif, markdown, or html");
+      if (!isOutputFormat(value)) throw new Error("Format must be table, json, sarif, markdown, html, or risk-json");
       format = value;
       index += 1;
     } else if (arg === "--quiet") {

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 export type Severity = "low" | "medium" | "high" | "critical";
 export type Confidence = "low" | "medium" | "high";
-export type OutputFormat = "table" | "json" | "sarif" | "markdown" | "html";
+export type OutputFormat = "table" | "json" | "sarif" | "markdown" | "html" | "risk-json";
 export type ScannerName = "code" | "secrets" | "dependencies" | "docker" | "actions" | "sensitive-files";
 export type FrameworkId = "owasp-llm-2025" | "nist-ai-rmf" | "mitre-atlas" | "google-saif";
 export type RiskLevel = "low" | "medium" | "high" | "critical";

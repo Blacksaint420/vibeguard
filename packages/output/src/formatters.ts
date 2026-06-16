@@ -1,8 +1,29 @@
 import { severityRank } from "../../core/src/types.ts";
 import { summarizeOwaspFindings } from "../../core/src/owasp.ts";
+import { summarizeGrcRisks } from "../../core/src/risk.ts";
 import type { CheckResult, Finding, ReportRecommendation } from "../../core/src/types.ts";
 
 type ReportLike = Finding[] | CheckResult;
+
+type GrcRiskEntry = {
+  category: string;
+  highestSeverity: Finding["severity"];
+  frameworks: NonNullable<Finding["frameworks"]>;
+  controlGaps: string[];
+  technicalEvidence: Array<{
+    id: string;
+    ruleId: string;
+    ruleVersion?: string;
+    severity: Finding["severity"];
+    confidence: Finding["confidence"];
+    file: string;
+    line: number;
+    scanner: string;
+    impact: string;
+    suggestedFix: string;
+    blocking: boolean;
+  }>;
+};
 
 export function renderJson(reportLike: ReportLike): string {
   const report = normalizeReport(reportLike);
@@ -15,6 +36,22 @@ export function renderJson(reportLike: ReportLike): string {
       warnings: report.warnings,
       recommendations: buildRecommendations(report),
       findings: report.findings
+    },
+    null,
+    2
+  );
+}
+
+export function renderRiskJson(reportLike: ReportLike): string {
+  const report = normalizeReport(reportLike);
+  return JSON.stringify(
+    {
+      tool: "vibeguard",
+      version: "0.1.0",
+      reportType: "grc-risk",
+      summary: report.summary,
+      riskSummary: summarizeGrcRisks(report.findings),
+      risks: buildGrcRisks(report.findings)
     },
     null,
     2
@@ -67,6 +104,7 @@ export function renderMarkdown(reportLike: ReportLike): string {
   const bySeverity = groupBy(findings, "severity");
   const byScanner = groupBy(findings, "scanner");
   const owaspSummary = summarizeOwaspFindings(findings);
+  const grcRisks = buildGrcRisks(findings);
   const lines = [
     "## VibeGuard Security Summary",
     "",
@@ -90,6 +128,16 @@ export function renderMarkdown(reportLike: ReportLike): string {
     ...(owaspSummary.length === 0
       ? ["- No OWASP LLM mapped findings."]
       : owaspSummary.map((entry) => `- ${entry.id} ${entry.name}: ${entry.count} finding${entry.count === 1 ? "" : "s"} (${entry.blocking} blocking)`)),
+    "",
+    "### GRC Risk Mapping",
+    "",
+    ...(grcRisks.length === 0
+      ? ["- No GRC risk mapped findings."]
+      : grcRisks.map((risk) => {
+        const frameworks = risk.frameworks.map((framework) => `${framework.framework}:${framework.id}`).join(", ") || "none";
+        const controlGaps = risk.controlGaps.join(", ") || "none";
+        return `- ${escapeMarkdown(risk.category)}: ${risk.technicalEvidence.length} finding${risk.technicalEvidence.length === 1 ? "" : "s"}; highest severity ${risk.highestSeverity}; frameworks ${escapeMarkdown(frameworks)}; control gaps ${escapeMarkdown(controlGaps)}`;
+      })),
     ""
   ];
 
@@ -210,6 +258,7 @@ export function renderHtml(reportLike: ReportLike): string {
   const report = normalizeReport(reportLike);
   const recommendations = buildRecommendations(report);
   const owaspSummary = summarizeOwaspFindings(report.findings);
+  const grcRisks = buildGrcRisks(report.findings);
   const rows = report.findings.map((finding) => [
     finding.blocking ? "BLOCK" : "WARN",
     finding.severity,
@@ -253,6 +302,16 @@ export function renderHtml(reportLike: ReportLike): string {
       ? "<p>No OWASP LLM mapped findings.</p>"
       : `<ul>${owaspSummary.map((entry) => `<li><strong>${escapeHtml(`${entry.id} ${entry.name}`)}</strong>: ${entry.count} finding${entry.count === 1 ? "" : "s"} (${entry.blocking} blocking)</li>`).join("")}</ul>`,
     "</section>",
+    "<section class=\"actions\">",
+    "<h2>GRC Risk Mapping</h2>",
+    grcRisks.length === 0
+      ? "<p>No GRC risk mapped findings.</p>"
+      : `<ul>${grcRisks.map((risk) => {
+        const frameworks = risk.frameworks.map((framework) => `${framework.framework}:${framework.id}`).join(", ") || "none";
+        const controlGaps = risk.controlGaps.join(", ") || "none";
+        return `<li><strong>${escapeHtml(risk.category)}</strong>: ${risk.technicalEvidence.length} finding${risk.technicalEvidence.length === 1 ? "" : "s"}; highest severity ${escapeHtml(risk.highestSeverity)}; frameworks ${escapeHtml(frameworks)}; control gaps ${escapeHtml(controlGaps)}</li>`;
+      }).join("")}</ul>`,
+    "</section>",
     "<section>",
     "<table>",
     "<thead><tr><th>Status</th><th>Severity</th><th>Confidence</th><th>Scanner</th><th>OWASP</th><th>Rule</th><th>Location</th><th>Evidence</th><th>Attack path</th><th>Impact</th><th>Suggested fix</th></tr></thead>",
@@ -269,10 +328,63 @@ export function renderHtml(reportLike: ReportLike): string {
 
 export function renderFindings(reportLike: ReportLike, format = "table"): string {
   if (format === "json") return renderJson(reportLike);
+  if (format === "risk-json") return renderRiskJson(reportLike);
   if (format === "sarif") return renderSarif(reportLike);
   if (format === "markdown") return renderMarkdown(reportLike);
   if (format === "html") return renderHtml(reportLike);
   return renderTable(reportLike);
+}
+
+function buildGrcRisks(findings: Finding[]): GrcRiskEntry[] {
+  return [...findings.reduce<Map<string, Finding[]>>((accumulator, finding) => {
+    const category = finding.risk?.category ?? "Unmapped technical finding";
+    accumulator.set(category, [...(accumulator.get(category) ?? []), finding]);
+    return accumulator;
+  }, new Map()).entries()]
+    .map(([category, groupedFindings]) => {
+      const frameworks = uniqueFrameworks(groupedFindings);
+      const controlGaps = [...new Set(groupedFindings.flatMap((finding) => finding.controlGaps ?? []))].sort();
+      return {
+        category,
+        highestSeverity: groupedFindings.reduce(
+          (highest, finding) => {
+            const severity = finding.risk?.severity ?? finding.severity;
+            return severityRank(severity) > severityRank(highest) ? severity : highest;
+          },
+          groupedFindings[0].risk?.severity ?? groupedFindings[0].severity
+        ),
+        frameworks,
+        controlGaps,
+        technicalEvidence: groupedFindings.map((finding) => ({
+          id: finding.id,
+          ruleId: finding.ruleId,
+          ruleVersion: finding.rule?.version,
+          severity: finding.severity,
+          confidence: finding.confidence,
+          file: finding.file,
+          line: finding.line,
+          scanner: finding.scanner ?? finding.rule?.scanner ?? "unknown",
+          impact: finding.impact ?? finding.why,
+          suggestedFix: finding.suggestedFix,
+          blocking: finding.blocking
+        }))
+      };
+    })
+    .sort((left, right) =>
+      severityRank(right.highestSeverity) - severityRank(left.highestSeverity)
+      || left.category.localeCompare(right.category)
+    );
+}
+
+function uniqueFrameworks(findings: Finding[]): NonNullable<Finding["frameworks"]> {
+  return [...new Map(
+    findings
+      .flatMap((finding) => finding.frameworks ?? [])
+      .map((framework) => [`${framework.framework}\0${framework.id}\0${framework.name}\0${framework.sourceVersion}`, framework])
+  ).values()].sort((left, right) =>
+    left.framework.localeCompare(right.framework)
+    || left.id.localeCompare(right.id)
+  );
 }
 
 export function buildRecommendations(reportLike: ReportLike, limit = 5): ReportRecommendation[] {

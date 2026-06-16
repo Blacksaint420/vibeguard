@@ -19,6 +19,14 @@ test("parseArgs supports check options", () => {
   assert.equal(command.format, "json");
 });
 
+test("parseArgs supports risk-json output format", () => {
+  const command = parseArgs(["check", "--staged", "--format", "risk-json"]);
+
+  assert.equal(command.name, "check");
+  assert.equal(command.staged, true);
+  assert.equal(command.format, "risk-json");
+});
+
 test("parseArgs supports repository path for full scan", () => {
   const command = parseArgs(["check", "/tmp/CV Maker", "--format", "json"]);
 
