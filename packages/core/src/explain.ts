@@ -2,6 +2,8 @@ import { createFinding } from "./types.ts";
 import { FRAMEWORK_CATALOG } from "./frameworks/catalog.ts";
 import { enrichFindingWithEnterpriseContext } from "./frameworks/crosswalk.ts";
 
+const BUILT_IN_RULE_VERSION = "2026.06.11";
+
 type RuleExplanation = {
   ruleId: string;
   title: string;
@@ -45,7 +47,7 @@ const RULES: RuleExplanation[] = [
 export function explainRule(id: string): string | undefined {
   const rule = RULES.find((candidate) => id === candidate.ruleId || id.startsWith(`${candidate.ruleId}:`));
   if (!rule) return undefined;
-  const enterpriseContext = explainEnterpriseContext(rule);
+  const enterpriseContext = builtInEnterpriseContext(rule);
   return [
     `${rule.ruleId}: ${rule.title}`,
     "",
@@ -77,6 +79,21 @@ function explainEnterpriseContext(rule: RuleExplanation) {
     testSuggestion: "",
     blocking: false
   }));
+}
+
+function builtInEnterpriseContext(rule: RuleExplanation): ReturnType<typeof explainEnterpriseContext> {
+  const context = explainEnterpriseContext(rule);
+  if (context.rule?.stability !== "custom") return context;
+
+  return {
+    ...context,
+    rule: {
+      id: rule.ruleId,
+      name: rule.title,
+      version: BUILT_IN_RULE_VERSION,
+      stability: "stable"
+    }
+  };
 }
 
 function formatFrameworkMappings(finding: ReturnType<typeof explainEnterpriseContext>): string[] {
