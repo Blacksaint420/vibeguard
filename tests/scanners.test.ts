@@ -7,6 +7,7 @@ import { runDependencyScanner } from "../packages/scanners/src/dependencies.ts";
 import { runDockerfileScanner } from "../packages/scanners/src/docker.ts";
 import { runActionsScanner } from "../packages/scanners/src/actions.ts";
 import { runSensitiveFileScanner } from "../packages/scanners/src/sensitive-files.ts";
+import { runAiScanner } from "../packages/scanners/src/ai.ts";
 
 function file(path: string, lines: string[], removedLines: string[] = []) {
   return {
@@ -81,4 +82,30 @@ test("sensitive file scanner reports risky file path changes", () => {
   assert.equal(findings.length, 1);
   assert.equal(findings[0].ruleId, "sensitive-file-change");
   assert.equal(findings[0].severity, "high");
+});
+
+test("AI scanner detects unsafe agent tool and RAG patterns", () => {
+  const findings = runAiScanner([
+    file("src/agent.ts", [
+      'tools: [{ name: "run_shell", execute: ({ command }) => exec(command) }]',
+      "await vectorStore.similaritySearch(query, 50);",
+      "const result = await openai.chat.completions.create({ messages, max_tokens: 100000 });"
+    ])
+  ]);
+
+  assert.deepEqual(findings.map((finding) => finding.ruleId).sort(), [
+    "ai-agent-shell-tool-no-approval",
+    "ai-rag-query-without-filter",
+    "ai-unbounded-token-request"
+  ]);
+});
+
+test("AI scanner detects unsafe model supply chain flags", () => {
+  const findings = runAiScanner([
+    file("model.py", ["model = AutoModel.from_pretrained(model_id, trust_remote_code=True)"])
+  ]);
+
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].ruleId, "ai-model-trust-remote-code");
+  assert.equal(findings[0].severity, "critical");
 });

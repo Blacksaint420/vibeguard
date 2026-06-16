@@ -6,6 +6,7 @@ enabledScanners:
   - docker
   - actions
   - sensitive-files
+  - ai
 blockSeverities:
   - high
   - critical

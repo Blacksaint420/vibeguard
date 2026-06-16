@@ -1,5 +1,6 @@
 import type { DiffFile, Finding, ScannerName } from "../../core/src/types.ts";
 import { runActionsScanner } from "./actions.ts";
+import { runAiScanner } from "./ai.ts";
 import { runCodeScanner } from "./code.ts";
 import { runDependencyScanner } from "./dependencies.ts";
 import { runDockerfileScanner } from "./docker.ts";
@@ -12,7 +13,8 @@ const SCANNERS: Record<ScannerName, (files: DiffFile[]) => Finding[]> = {
   dependencies: runDependencyScanner,
   docker: runDockerfileScanner,
   actions: runActionsScanner,
-  "sensitive-files": runSensitiveFileScanner
+  "sensitive-files": runSensitiveFileScanner,
+  ai: runAiScanner
 };
 
 export async function runScanners(files: DiffFile[], enabledScanners: ScannerName[]): Promise<Finding[]> {
@@ -23,6 +25,7 @@ export async function runScanners(files: DiffFile[], enabledScanners: ScannerNam
 
 export {
   runActionsScanner,
+  runAiScanner,
   runCodeScanner,
   runDependencyScanner,
   runDockerfileScanner,

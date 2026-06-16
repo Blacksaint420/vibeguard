@@ -110,7 +110,11 @@ test("enriched crosswalk mapping source versions match the current framework cat
   const catalogVersionById = new Map(FRAMEWORK_CATALOG.map((entry) => [entry.id, entry.sourceVersion]));
   const findings = [
     enrichFindingWithEnterpriseContext(technicalFinding("js-eval")),
-    enrichFindingWithEnterpriseContext(technicalFinding("secret-github-token"))
+    enrichFindingWithEnterpriseContext(technicalFinding("secret-github-token")),
+    enrichFindingWithEnterpriseContext(technicalFinding("ai-agent-shell-tool-no-approval")),
+    enrichFindingWithEnterpriseContext(technicalFinding("ai-rag-query-without-filter")),
+    enrichFindingWithEnterpriseContext(technicalFinding("ai-unbounded-token-request")),
+    enrichFindingWithEnterpriseContext(technicalFinding("ai-model-trust-remote-code"))
   ];
 
   for (const finding of findings) {
@@ -118,4 +122,11 @@ test("enriched crosswalk mapping source versions match the current framework cat
       assert.equal(mapping.sourceVersion, catalogVersionById.get(mapping.framework));
     }
   }
+});
+
+test("AI scanner rules map to enterprise AI risk categories", () => {
+  assert.equal(enrichFindingWithEnterpriseContext(technicalFinding("ai-agent-shell-tool-no-approval")).risk?.category, "Agentic AI excessive agency");
+  assert.equal(enrichFindingWithEnterpriseContext(technicalFinding("ai-rag-query-without-filter")).risk?.category, "RAG data exposure");
+  assert.equal(enrichFindingWithEnterpriseContext(technicalFinding("ai-unbounded-token-request")).risk?.category, "AI resource consumption");
+  assert.equal(enrichFindingWithEnterpriseContext(technicalFinding("ai-model-trust-remote-code")).risk?.category, "AI supply chain");
 });

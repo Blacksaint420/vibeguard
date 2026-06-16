@@ -9,7 +9,8 @@ const DEFAULT_SCANNERS: ScannerName[] = [
   "dependencies",
   "docker",
   "actions",
-  "sensitive-files"
+  "sensitive-files",
+  "ai"
 ];
 
 export const DEFAULT_POLICY_TEXT = `mode: block
@@ -20,6 +21,7 @@ enabledScanners:
   - docker
   - actions
   - sensitive-files
+  - ai
 blockSeverities:
   - high
   - critical

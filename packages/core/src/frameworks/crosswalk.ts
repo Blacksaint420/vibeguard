@@ -60,6 +60,73 @@ const CONTEXT_BY_RULE: Record<string, RuleEnterpriseContextDefinition> = {
       controlOwner: "security"
     },
     controlGaps: ["secret management", "credential rotation", "source control hygiene"]
+  },
+  "ai-agent-shell-tool-no-approval": {
+    rule: stableRule("ai-agent-shell-tool-no-approval", "Agent tool exposes shell execution without approval", "ai"),
+    frameworks: [
+      frameworkMappingDefinition("owasp-llm-2025", "LLM06:2025", "Excessive Agency"),
+      frameworkMappingDefinition("nist-ai-rmf", "MANAGE", "Prioritize and respond to AI risks"),
+      frameworkMappingDefinition("mitre-atlas", "AML.T0051", "LLM Prompt Injection"),
+      frameworkMappingDefinition("google-saif", "input-output-controls", "Input and output controls")
+    ],
+    risk: {
+      category: "Agentic AI excessive agency",
+      likelihood: "high",
+      impact: "critical",
+      severity: "critical",
+      controlOwner: "engineering"
+    },
+    controlGaps: ["tool approval", "least privilege", "command allowlisting"]
+  },
+  "ai-rag-query-without-filter": {
+    rule: stableRule("ai-rag-query-without-filter", "RAG retrieval query has no visible authorization filter", "ai"),
+    frameworks: [
+      frameworkMappingDefinition("owasp-llm-2025", "LLM08:2025", "Vector and Embedding Weaknesses"),
+      frameworkMappingDefinition("nist-ai-rmf", "MAP", "Map AI context and risks"),
+      frameworkMappingDefinition("mitre-atlas", "AML.T0054", "LLM Data Leakage"),
+      frameworkMappingDefinition("google-saif", "input-output-controls", "Input and output controls")
+    ],
+    risk: {
+      category: "RAG data exposure",
+      likelihood: "medium",
+      impact: "high",
+      severity: "high",
+      controlOwner: "engineering"
+    },
+    controlGaps: ["retrieval authorization", "tenant isolation", "data minimization"]
+  },
+  "ai-unbounded-token-request": {
+    rule: stableRule("ai-unbounded-token-request", "LLM request uses excessive token budget", "ai"),
+    frameworks: [
+      frameworkMappingDefinition("owasp-llm-2025", "LLM10:2025", "Unbounded Consumption"),
+      frameworkMappingDefinition("nist-ai-rmf", "MEASURE", "Analyze and assess AI risks"),
+      frameworkMappingDefinition("google-saif", "secure-by-default", "Secure-by-default deployment")
+    ],
+    risk: {
+      category: "AI resource consumption",
+      likelihood: "medium",
+      impact: "medium",
+      severity: "medium",
+      controlOwner: "platform"
+    },
+    controlGaps: ["rate limiting", "cost controls", "resource quotas"]
+  },
+  "ai-model-trust-remote-code": {
+    rule: stableRule("ai-model-trust-remote-code", "Model loading trusts remote code", "ai"),
+    frameworks: [
+      frameworkMappingDefinition("owasp-llm-2025", "LLM03:2025", "Supply Chain"),
+      frameworkMappingDefinition("nist-ai-rmf", "GOVERN", "Govern AI risk management"),
+      frameworkMappingDefinition("mitre-atlas", "AML.T0010", "Acquire ML Artifacts"),
+      frameworkMappingDefinition("google-saif", "secure-supply-chain", "Secure supply chain")
+    ],
+    risk: {
+      category: "AI supply chain",
+      likelihood: "high",
+      impact: "critical",
+      severity: "critical",
+      controlOwner: "security"
+    },
+    controlGaps: ["model provenance", "artifact pinning", "supply chain review"]
   }
 };
 
