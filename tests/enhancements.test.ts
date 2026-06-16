@@ -335,7 +335,18 @@ test("baseline command records accepted findings and check suppresses them", asy
 
 test("suppress command appends a reasoned policy suppression", async () => {
   const root = mkdtempSync(join(tmpdir(), "vibeguard-suppress-"));
-  const result = await runCli(["suppress", "js-eval", "--file", "src/app.js", "--reason", "Accepted generated sandbox"], {
+  const result = await runCli([
+    "suppress",
+    "js-eval",
+    "--file",
+    "src/app.js",
+    "--reason",
+    "Accepted generated sandbox",
+    "--reviewer",
+    "security@example.com",
+    "--expires",
+    "2099-01-01"
+  ], {
     cwd: root,
     stdout: () => {},
     stderr: () => {}
@@ -346,6 +357,8 @@ test("suppress command appends a reasoned policy suppression", async () => {
   assert.equal(config.includes("rule: js-eval"), true);
   assert.equal(config.includes("file: src/app.js"), true);
   assert.equal(config.includes("reason: Accepted generated sandbox"), true);
+  assert.equal(config.includes('reviewer: "security@example.com"'), true);
+  assert.equal(config.includes("expires: 2099-01-01"), true);
 });
 
 test("report command writes improved markdown output to a file", async () => {

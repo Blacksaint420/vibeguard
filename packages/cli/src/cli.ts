@@ -5,7 +5,7 @@ import { baselineFindingIds, createBaseline, DEFAULT_BASELINE_PATH, loadBaseline
 import { collectGitDiff } from "../../core/src/diff.ts";
 import { explainRule } from "../../core/src/explain.ts";
 import { runCheck } from "../../core/src/engine.ts";
-import { DEFAULT_POLICY_TEXT } from "../../core/src/policy.ts";
+import { DEFAULT_POLICY_TEXT, isValidSuppressionExpiration, loadPolicyFromText } from "../../core/src/policy.ts";
 import { collectRepositoryFiles } from "../../core/src/repository.ts";
 import type { Confidence, DiffFile, OutputFormat } from "../../core/src/types.ts";
 import { renderFindings } from "../../output/src/formatters.ts";
@@ -377,8 +377,26 @@ function appendSuppression(command: Extract<ParsedCommand, { name: "suppress" }>
   const outputPath = command.config ?? "vibeguard.yml";
   const resolvedPath = resolve(cwd, outputPath);
   const existing = existsSync(resolvedPath) ? readFileSync(resolvedPath, "utf8") : DEFAULT_POLICY_TEXT;
+  validateSuppressionCommand(command, existing);
   writeFileSync(resolvedPath, addSuppression(existing, command));
   return outputPath;
+}
+
+function validateSuppressionCommand(command: Extract<ParsedCommand, { name: "suppress" }>, policyText: string): void {
+  const policy = loadPolicyFromText(policyText);
+  const missing = [
+    policy.suppressionPolicy.requireReason && !command.reason?.trim() ? "reason" : undefined,
+    policy.suppressionPolicy.requireReviewer && !command.reviewer?.trim() ? "reviewer" : undefined,
+    policy.suppressionPolicy.requireExpiration && !command.expires?.trim() ? "expires" : undefined
+  ].filter(Boolean);
+
+  if (missing.length > 0) {
+    throw new Error(`Missing required suppression fields: ${missing.join(", ")}`);
+  }
+
+  if (command.expires && !isValidSuppressionExpiration(command.expires)) {
+    throw new Error("--expires must be a valid YYYY-MM-DD date");
+  }
 }
 
 function addSuppression(text: string, command: Extract<ParsedCommand, { name: "suppress" }>): string {

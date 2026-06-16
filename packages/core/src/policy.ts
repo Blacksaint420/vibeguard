@@ -72,6 +72,7 @@ export function loadPolicyFromText(text: string): Policy {
   const lines = text.split(/\r?\n/);
   let section = "";
   let currentSuppression: Suppression | undefined;
+  let hasSuppressionPolicy = false;
 
   for (const rawLine of lines) {
     const line = rawLine.trimEnd();
@@ -81,6 +82,7 @@ export function loadPolicyFromText(text: string): Policy {
     const topLevel = !line.startsWith(" ");
     if (topLevel && trimmed.endsWith(":")) {
       section = trimmed.slice(0, -1);
+      if (section === "suppressionPolicy") hasSuppressionPolicy = true;
       continue;
     }
 
@@ -122,6 +124,13 @@ export function loadPolicyFromText(text: string): Policy {
   policy.blockSeverities = unique(policy.blockSeverities);
   policy.include = unique(policy.include);
   policy.exclude = unique(policy.exclude);
+  if (!hasSuppressionPolicy) {
+    policy.suppressionPolicy = {
+      requireReason: false,
+      requireReviewer: false,
+      requireExpiration: false
+    };
+  }
   return policy;
 }
 
@@ -185,8 +194,30 @@ function isValidSuppression(suppression: Suppression, suppressionPolicy: Suppres
 }
 
 function isExpired(expires: string): boolean {
-  const timestamp = Date.parse(`${expires}T00:00:00Z`);
-  return Number.isNaN(timestamp) || timestamp < Date.now();
+  const timestamp = parseExpirationEnd(expires);
+  return timestamp === undefined || timestamp < Date.now();
+}
+
+export function isValidSuppressionExpiration(expires: string): boolean {
+  return parseExpirationEnd(expires) !== undefined;
+}
+
+function parseExpirationEnd(expires: string): number | undefined {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(expires);
+  if (!match) return undefined;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const timestamp = Date.UTC(year, month - 1, day, 23, 59, 59, 999);
+  const parsed = new Date(timestamp);
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day
+  ) {
+    return undefined;
+  }
+  return timestamp;
 }
 
 function parseBoolean(value: string): boolean | undefined {

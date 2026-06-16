@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { parseArgs, runCli } from "../packages/cli/src/cli.ts";
 
@@ -55,6 +58,102 @@ test("parseArgs supports enterprise suppress options", () => {
   assert.equal(command.reason, "accepted for migration");
   assert.equal(command.reviewer, "security@example.com");
   assert.equal(command.expires, "2099-01-01");
+});
+
+test("runCli rejects suppressions missing required enterprise fields", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "vibeguard-cli-"));
+  const writes: string[] = [];
+  const errors: string[] = [];
+  const result = await runCli([
+    "suppress",
+    "js-eval",
+    "--file",
+    "src/app.js",
+    "--reason",
+    "accepted for migration"
+  ], {
+    cwd,
+    stdout: (text) => writes.push(text),
+    stderr: (text) => errors.push(text)
+  });
+
+  assert.equal(result.exitCode, 2);
+  assert.equal(writes.join(""), "");
+  assert.equal(errors.join("").includes("Missing required suppression fields: reviewer, expires"), true);
+  assert.equal(existsSync(join(cwd, "vibeguard.yml")), false);
+});
+
+test("runCli rejects suppressions missing required reason", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "vibeguard-cli-"));
+  const errors: string[] = [];
+  const result = await runCli([
+    "suppress",
+    "js-eval",
+    "--file",
+    "src/app.js",
+    "--reviewer",
+    "security@example.com",
+    "--expires",
+    "2099-01-01"
+  ], {
+    cwd,
+    stdout: () => {},
+    stderr: (text) => errors.push(text)
+  });
+
+  assert.equal(result.exitCode, 2);
+  assert.equal(errors.join("").includes("Missing required suppression fields: reason"), true);
+  assert.equal(existsSync(join(cwd, "vibeguard.yml")), false);
+});
+
+test("runCli rejects malformed suppression expiration", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "vibeguard-cli-"));
+  const errors: string[] = [];
+  const result = await runCli([
+    "suppress",
+    "js-eval",
+    "--file",
+    "src/app.js",
+    "--reason",
+    "accepted for migration",
+    "--reviewer",
+    "security@example.com",
+    "--expires",
+    "2099-02-30"
+  ], {
+    cwd,
+    stdout: () => {},
+    stderr: (text) => errors.push(text)
+  });
+
+  assert.equal(result.exitCode, 2);
+  assert.equal(errors.join("").includes("--expires must be a valid YYYY-MM-DD date"), true);
+  assert.equal(existsSync(join(cwd, "vibeguard.yml")), false);
+});
+
+test("runCli appends legacy suppressions when config has no suppression policy", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "vibeguard-cli-"));
+  const configPath = join(cwd, "vibeguard.yml");
+  writeFileSync(configPath, [
+    "mode: block",
+    "suppressions: []"
+  ].join("\n"));
+
+  const errors: string[] = [];
+  const result = await runCli([
+    "suppress",
+    "js-eval",
+    "--file",
+    "src/app.js"
+  ], {
+    cwd,
+    stdout: () => {},
+    stderr: (text) => errors.push(text)
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(errors.join(""), "");
+  assert.equal(readFileSync(configPath, "utf8").includes("  - rule: js-eval"), true);
 });
 
 test("runCli returns blocking exit code for vulnerable staged diff", async () => {

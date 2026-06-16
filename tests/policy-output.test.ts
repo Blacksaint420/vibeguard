@@ -49,6 +49,19 @@ test("applyPolicy honors rule suppressions", () => {
   assert.equal(results.length, 0);
 });
 
+test("legacy configs without suppression policy honor old suppressions", () => {
+  const policy = loadPolicyFromText([
+    "mode: block",
+    "suppressions:",
+    "  - rule: js-eval",
+    "    file: src/app.js"
+  ].join("\n"));
+
+  const results = applyPolicy([finding()], policy);
+
+  assert.equal(results.length, 0);
+});
+
 test("enterprise suppressions require reason, reviewer, and unexpired date", () => {
   const policy = loadPolicyFromText([
     "mode: block",
@@ -110,6 +123,26 @@ test("suppressions missing required reviewer do not hide findings", () => {
   assert.equal(results[0].blocking, true);
 });
 
+test("suppressions missing required reason do not hide findings", () => {
+  const policy = loadPolicyFromText([
+    "mode: block",
+    "suppressionPolicy:",
+    "  requireReason: true",
+    "  requireReviewer: true",
+    "  requireExpiration: true",
+    "suppressions:",
+    "  - rule: js-eval",
+    "    file: src/app.js",
+    "    reviewer: security@example.com",
+    "    expires: 2099-01-01"
+  ].join("\n"));
+
+  const results = applyPolicy([finding()], policy);
+
+  assert.equal(results.length, 1);
+  assert.equal(results[0].blocking, true);
+});
+
 test("suppressions missing required expiration do not hide findings", () => {
   const policy = loadPolicyFromText([
     "mode: block",
@@ -122,6 +155,27 @@ test("suppressions missing required expiration do not hide findings", () => {
     "    file: src/app.js",
     "    reason: accepted for migration",
     "    reviewer: security@example.com"
+  ].join("\n"));
+
+  const results = applyPolicy([finding()], policy);
+
+  assert.equal(results.length, 1);
+  assert.equal(results[0].blocking, true);
+});
+
+test("malformed suppression expiration does not hide findings", () => {
+  const policy = loadPolicyFromText([
+    "mode: block",
+    "suppressionPolicy:",
+    "  requireReason: true",
+    "  requireReviewer: true",
+    "  requireExpiration: true",
+    "suppressions:",
+    "  - rule: js-eval",
+    "    file: src/app.js",
+    "    reason: accepted for migration",
+    "    reviewer: security@example.com",
+    "    expires: 2099-02-30"
   ].join("\n"));
 
   const results = applyPolicy([finding()], policy);
