@@ -134,6 +134,19 @@ test("AI scanner ignores multiline comments and Python triple-quoted strings", (
   assert.equal(findings.length, 0);
 });
 
+test("AI scanner ignores multiline JavaScript template literals", () => {
+  const findings = runAiScanner([
+    file("src/template.ts", [
+      "const fixture = `",
+      'tools: [{ name: "run_shell", execute: () => exec(command) }]',
+      "await vectorStore.similaritySearch(query, 50);",
+      "`;"
+    ])
+  ]);
+
+  assert.equal(findings.length, 0);
+});
+
 test("AI scanner limits RAG query detection to vector and retriever contexts", () => {
   const findings = runAiScanner([
     file("src/search.ts", [

@@ -339,3 +339,20 @@ test("runCheck enriches findings with enterprise context before rendering", asyn
   assert.equal(report.findings[0].risk?.category, "AI application security");
   assert.equal(report.findings[0].snippet, "eval(req.body.code);");
 });
+
+test("runCheck includes medium-confidence RAG findings in audit mode", async () => {
+  const diff = [
+    "diff --git a/src/rag.ts b/src/rag.ts",
+    "index 0000000..abc1234 100644",
+    "--- a/src/rag.ts",
+    "+++ b/src/rag.ts",
+    "@@ -0,0 +1 @@",
+    "+await vectorStore.similaritySearch(query, 50);"
+  ].join("\n");
+
+  const defaultReport = await runCheckFromDiff(diff);
+  const auditReport = await runCheckFromDiff(diff, { ...defaultPolicy(), minConfidence: "medium" });
+
+  assert.equal(defaultReport.findings.some((finding) => finding.ruleId === "ai-rag-query-without-filter"), false);
+  assert.equal(auditReport.findings.some((finding) => finding.ruleId === "ai-rag-query-without-filter"), true);
+});

@@ -21,6 +21,7 @@ type Rule = {
 
 type StripState = {
   inBlockComment: boolean;
+  inTemplateLiteral: boolean;
   pythonTripleQuote?: "\"\"\"" | "'''";
 };
 
@@ -104,7 +105,7 @@ export function runAiScanner(files: DiffFile[]): Finding[] {
     if (isVendoredOrGeneratedPath(file.path)) continue;
     if (!isJavaScriptFile(file.path) && !isPythonFile(file.path)) continue;
 
-    const stripState: StripState = { inBlockComment: false };
+    const stripState: StripState = { inBlockComment: false, inTemplateLiteral: false };
     for (const line of file.addedLines) {
       const matchTarget = stripStringsAndComments(line.content, file.path, stripState);
       if (!matchTarget.trim()) continue;
@@ -161,6 +162,15 @@ function stripStringsAndComments(line: string, path: string, state: StripState):
       continue;
     }
 
+    if (state.inTemplateLiteral) {
+      const end = findTemplateLiteralEnd(line, index);
+      if (end === -1) return output;
+      output += " ".repeat(end + 1 - index);
+      index = end + 1;
+      state.inTemplateLiteral = false;
+      continue;
+    }
+
     if (isJavaScript && char === "/" && next === "/") break;
     if (isJavaScript && char === "/" && next === "*") {
       const end = line.indexOf("*/", index + 2);
@@ -186,10 +196,21 @@ function stripStringsAndComments(line: string, path: string, state: StripState):
       continue;
     }
 
-    if (char === "\"" || char === "'" || (isJavaScript && char === "`")) {
+    if (isJavaScript && char === "`") {
+      const end = findTemplateLiteralEnd(line, index + 1);
+      if (end === -1) {
+        state.inTemplateLiteral = true;
+        break;
+      }
+      output += " ".repeat(end + 1 - index);
+      index = end + 1;
+      continue;
+    }
+
+    if (char === "\"" || char === "'") {
       const { end, inner } = readStringLiteral(line, index, char);
       const nextMeaningful = nextNonWhitespace(line, end + 1);
-      if (char !== "`" && nextMeaningful === ":") {
+      if (nextMeaningful === ":") {
         output += inner;
       } else {
         output += " ".repeat(end + 1 - index);
@@ -228,6 +249,23 @@ function readStringLiteral(line: string, start: number, quote: string): { end: n
   }
 
   return { end: line.length - 1, inner };
+}
+
+function findTemplateLiteralEnd(line: string, start: number): number {
+  let escaped = false;
+  for (let index = start; index < line.length; index += 1) {
+    const char = line[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (char === "`") return index;
+  }
+  return -1;
 }
 
 function nextNonWhitespace(line: string, start: number): string | undefined {
