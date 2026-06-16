@@ -1,3 +1,7 @@
+import { createFinding } from "./types.ts";
+import { FRAMEWORK_CATALOG } from "./frameworks/catalog.ts";
+import { enrichFindingWithEnterpriseContext } from "./frameworks/crosswalk.ts";
+
 type RuleExplanation = {
   ruleId: string;
   title: string;
@@ -41,11 +45,45 @@ const RULES: RuleExplanation[] = [
 export function explainRule(id: string): string | undefined {
   const rule = RULES.find((candidate) => id === candidate.ruleId || id.startsWith(`${candidate.ruleId}:`));
   if (!rule) return undefined;
+  const enterpriseContext = explainEnterpriseContext(rule);
   return [
     `${rule.ruleId}: ${rule.title}`,
     "",
     `Why it matters: ${rule.why}`,
-    `Suggested fix: ${rule.fix}`
+    `Suggested fix: ${rule.fix}`,
+    "",
+    `Rule version: ${enterpriseContext.rule?.version ?? "unknown"}`,
+    `Rule stability: ${enterpriseContext.rule?.stability ?? "unknown"}`,
+    `Risk category: ${enterpriseContext.risk?.category ?? "Unmapped technical finding"}`,
+    "Framework mappings:",
+    ...formatFrameworkMappings(enterpriseContext)
   ].join("\n");
 }
 
+function explainEnterpriseContext(rule: RuleExplanation) {
+  return enrichFindingWithEnterpriseContext(createFinding({
+    id: `explain:${rule.ruleId}`,
+    ruleId: rule.ruleId,
+    title: rule.title,
+    severity: "medium",
+    confidence: "high",
+    riskScore: 0,
+    file: "<explain>",
+    line: 0,
+    snippet: "",
+    why: rule.why,
+    suggestedFix: rule.fix,
+    aiFixPrompt: "",
+    testSuggestion: "",
+    blocking: false
+  }));
+}
+
+function formatFrameworkMappings(finding: ReturnType<typeof explainEnterpriseContext>): string[] {
+  if (!finding.frameworks.length) return ["- No framework mapping"];
+
+  return finding.frameworks.map((mapping) => {
+    const frameworkName = FRAMEWORK_CATALOG.find((framework) => framework.id === mapping.framework)?.name ?? mapping.framework;
+    return `- ${frameworkName}: ${mapping.id} - ${mapping.name}`;
+  });
+}

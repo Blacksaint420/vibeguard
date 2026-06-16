@@ -234,6 +234,21 @@ test("runCli explain returns rule details", async () => {
   assert.equal(writes.join("").includes("Dynamic code execution"), true);
 });
 
+test("runCli explain includes enterprise rule metadata", async () => {
+  const writes: string[] = [];
+  const result = await runCli(["explain", "js-eval"], {
+    cwd: process.cwd(),
+    stdout: (text) => writes.push(text),
+    stderr: () => {}
+  });
+  const output = writes.join("");
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(output.includes("Rule version: 2026.06.11"), true);
+  assert.equal(output.includes("Framework mappings:"), true);
+  assert.equal(output.includes("OWASP Top 10 for LLM Applications"), true);
+});
+
 test("runCli doctor reports local-first behavior", async () => {
   const writes: string[] = [];
   const result = await runCli(["doctor"], {

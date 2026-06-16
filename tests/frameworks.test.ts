@@ -51,6 +51,13 @@ test("unknown rules keep technical findings and receive default risk context", (
   assert.equal(enriched.risk?.category, "Unmapped technical finding");
 });
 
+test("stable built-in rules expose version metadata", () => {
+  const enriched = enrichFindingWithEnterpriseContext(technicalFinding("ai-model-trust-remote-code"));
+
+  assert.equal(enriched.rule?.version, "2026.06.11");
+  assert.equal(enriched.rule?.stability, "stable");
+});
+
 test("GRC risk summary groups enriched findings by category and framework", () => {
   const findings = [
     enrichFindingWithEnterpriseContext(technicalFinding("js-eval")),
