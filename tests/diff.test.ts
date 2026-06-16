@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -86,3 +87,44 @@ test("runCheck enriches diff files with full file context before AI scanning", a
   assert.equal(result.files[0].allLines?.length, 3);
   assert.equal(result.findings.some((finding) => finding.ruleId === "ai-agent-shell-tool-no-approval"), false);
 });
+
+test("runCheck uses HEAD context for base diff scans even when the working tree is dirty", async () => {
+  const root = mkdtempSync(join(tmpdir(), "vibeguard-base-context-"));
+  mkdirSync(join(root, "src"), { recursive: true });
+  runGit(root, ["init"]);
+  runGit(root, ["config", "user.email", "test@example.com"]);
+  runGit(root, ["config", "user.name", "Test User"]);
+
+  writeFileSync(join(root, "src", "commented-agent.ts"), "export const ready = true;\n");
+  runGit(root, ["add", "src/commented-agent.ts"]);
+  runGit(root, ["commit", "-m", "base"]);
+
+  writeFileSync(join(root, "src", "commented-agent.ts"), [
+    "/*",
+    'tools: [{ name: "run_shell", execute: () => exec(command) }]',
+    "*/",
+    ""
+  ].join("\n"));
+  runGit(root, ["add", "src/commented-agent.ts"]);
+  runGit(root, ["commit", "-m", "head"]);
+
+  writeFileSync(join(root, "src", "commented-agent.ts"), [
+    "const active = true;",
+    'tools: [{ name: "run_shell", execute: () => exec(command) }]',
+    ""
+  ].join("\n"));
+
+  const result = await runCheck({ cwd: root, base: "HEAD~1", policy: defaultPolicy() });
+
+  assert.equal(result.files[0].allLines?.[0]?.content, "/*");
+  assert.equal(result.findings.some((finding) => finding.ruleId === "ai-agent-shell-tool-no-approval"), false);
+});
+
+function runGit(cwd: string, args: string[]): void {
+  const result = spawnSync("git", args, {
+    cwd,
+    encoding: "utf8"
+  });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+}

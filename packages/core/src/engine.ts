@@ -68,7 +68,8 @@ function collectFilesForCheck(options: CheckOptions, cwd: string, policy: Policy
     const diffText = options.diffText ?? collectGitDiff({ ...options, cwd });
     const files = enrichDiffFilesWithFullContext(parseUnifiedDiff(diffText), {
       cwd,
-      staged: options.staged
+      staged: options.staged,
+      base: options.base
     });
     return {
       files: files.filter((file) => shouldScanFile(file.path, policy)),

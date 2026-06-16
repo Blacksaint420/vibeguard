@@ -124,16 +124,14 @@ export function getChangedLineSet(file: DiffFile): Set<number> {
 
 export function enrichDiffFilesWithFullContext(
   files: DiffFile[],
-  options: { cwd?: string; staged?: boolean } = {}
+  options: { cwd?: string; staged?: boolean; base?: string } = {}
 ): DiffFile[] {
   const cwd = resolve(options.cwd ?? process.cwd());
 
   return files.map((file) => {
     if (file.status === "deleted" || file.allLines) return file;
 
-    const content = options.staged
-      ? readStagedFileContent(cwd, file.path) ?? readWorkingTreeFileContent(cwd, file.path)
-      : readWorkingTreeFileContent(cwd, file.path);
+    const content = readContextFileContent(cwd, file.path, options);
 
     if (content === undefined) return file;
     return {
@@ -143,8 +141,26 @@ export function enrichDiffFilesWithFullContext(
   });
 }
 
-function readStagedFileContent(cwd: string, path: string): string | undefined {
-  const result = spawnSync("git", ["show", `:${path}`], {
+function readContextFileContent(
+  cwd: string,
+  path: string,
+  options: { staged?: boolean; base?: string }
+): string | undefined {
+  if (options.staged) {
+    // If the index copy is unavailable, use the working tree so scanners can still
+    // reason over surrounding syntax for staged diffs instead of added lines only.
+    return readGitObjectFileContent(cwd, `:${path}`) ?? readWorkingTreeFileContent(cwd, path);
+  }
+
+  if (options.base) {
+    return readGitObjectFileContent(cwd, `HEAD:${path}`);
+  }
+
+  return readWorkingTreeFileContent(cwd, path);
+}
+
+function readGitObjectFileContent(cwd: string, objectPath: string): string | undefined {
+  const result = spawnSync("git", ["show", objectPath], {
     cwd,
     encoding: "utf8",
     maxBuffer: 20 * 1024 * 1024
@@ -152,8 +168,6 @@ function readStagedFileContent(cwd: string, path: string): string | undefined {
 
   if (result.status === 0) return result.stdout ?? "";
 
-  // If the index copy is unavailable, use the working tree so scanners can still
-  // reason over surrounding syntax for staged diffs instead of falling back to added lines only.
   return undefined;
 }
 
