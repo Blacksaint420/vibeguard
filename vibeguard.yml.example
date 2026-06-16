@@ -21,6 +21,8 @@ sensitiveFilePolicy:
   block: true
 suppressionPolicy:
   requireReason: true
+  requireReviewer: true
+  requireExpiration: true
 aiPrompts:
   enabled: true
 suppressions: []

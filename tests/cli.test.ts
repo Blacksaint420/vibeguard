@@ -35,6 +35,28 @@ test("parseArgs supports repository path for full scan", () => {
   assert.equal(command.staged, false);
 });
 
+test("parseArgs supports enterprise suppress options", () => {
+  const command = parseArgs([
+    "suppress",
+    "js-eval",
+    "--file",
+    "src/app.js",
+    "--reason",
+    "accepted for migration",
+    "--reviewer",
+    "security@example.com",
+    "--expires",
+    "2099-01-01"
+  ]);
+
+  assert.equal(command.name, "suppress");
+  assert.equal(command.id, "js-eval");
+  assert.equal(command.file, "src/app.js");
+  assert.equal(command.reason, "accepted for migration");
+  assert.equal(command.reviewer, "security@example.com");
+  assert.equal(command.expires, "2099-01-01");
+});
+
 test("runCli returns blocking exit code for vulnerable staged diff", async () => {
   const writes: string[] = [];
   const result = await runCli(["check", "--staged", "--format", "json"], {

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import type { Confidence, Finding, Policy, ScannerName, Severity, Suppression } from "./types.ts";
+import type { Confidence, Finding, Policy, ScannerName, Severity, Suppression, SuppressionPolicy } from "./types.ts";
 
 const DEFAULT_SCANNERS: ScannerName[] = [
   "code",
@@ -35,6 +35,8 @@ sensitiveFilePolicy:
   block: true
 suppressionPolicy:
   requireReason: true
+  requireReviewer: true
+  requireExpiration: true
 aiPrompts:
   enabled: true
 suppressions: []
@@ -49,6 +51,11 @@ export function defaultPolicy(): Policy {
     include: ["**/*"],
     exclude: [],
     suppressions: [],
+    suppressionPolicy: {
+      requireReason: true,
+      requireReviewer: true,
+      requireExpiration: true
+    },
     minConfidence: "high",
     aiPrompts: { enabled: true }
   };
@@ -103,6 +110,11 @@ export function loadPolicyFromText(text: string): Policy {
 
     if (section === "suppressions" && currentSuppression && trimmed.includes(":")) {
       assignSuppressionValue(currentSuppression, trimmed);
+      continue;
+    }
+
+    if (section === "suppressionPolicy" && trimmed.includes(":")) {
+      assignSuppressionPolicyValue(policy, trimmed);
     }
   }
 
@@ -115,15 +127,20 @@ export function loadPolicyFromText(text: string): Policy {
 
 export function applyPolicy(findings: Finding[], policy: Policy): Finding[] {
   return findings
-    .filter((finding) => !isSuppressed(finding, policy.suppressions))
+    .filter((finding) => !isSuppressed(finding, policy.suppressions, policy.suppressionPolicy))
     .map((finding) => ({
       ...finding,
       blocking: policy.mode === "block" && policy.blockSeverities.includes(finding.severity)
     }));
 }
 
-export function isSuppressed(finding: Finding, suppressions: Suppression[]): boolean {
+export function isSuppressed(
+  finding: Finding,
+  suppressions: Suppression[],
+  suppressionPolicy: SuppressionPolicy = defaultPolicy().suppressionPolicy
+): boolean {
   return suppressions.some((suppression) => {
+    if (!isValidSuppression(suppression, suppressionPolicy)) return false;
     if (suppression.rule && suppression.rule !== finding.ruleId && suppression.rule !== finding.id) return false;
     if (suppression.file && !globMatches(suppression.file, finding.file)) return false;
     if (suppression.line && suppression.line !== finding.line) return false;
@@ -145,6 +162,37 @@ function assignSuppressionValue(suppression: Suppression, text: string): void {
   if (key === "file") suppression.file = value;
   if (key === "line") suppression.line = Number(value);
   if (key === "reason") suppression.reason = value;
+  if (key === "reviewer") suppression.reviewer = value;
+  if (key === "expires") suppression.expires = value;
+}
+
+function assignSuppressionPolicyValue(policy: Policy, text: string): void {
+  const [rawKey, ...rest] = text.split(":");
+  const key = rawKey.trim();
+  const value = parseBoolean(rest.join(":").trim());
+  if (value === undefined) return;
+  if (key === "requireReason") policy.suppressionPolicy.requireReason = value;
+  if (key === "requireReviewer") policy.suppressionPolicy.requireReviewer = value;
+  if (key === "requireExpiration") policy.suppressionPolicy.requireExpiration = value;
+}
+
+function isValidSuppression(suppression: Suppression, suppressionPolicy: SuppressionPolicy): boolean {
+  if (suppressionPolicy.requireReason && !suppression.reason?.trim()) return false;
+  if (suppressionPolicy.requireReviewer && !suppression.reviewer?.trim()) return false;
+  if (suppressionPolicy.requireExpiration && !suppression.expires?.trim()) return false;
+  if (suppression.expires && isExpired(suppression.expires)) return false;
+  return true;
+}
+
+function isExpired(expires: string): boolean {
+  const timestamp = Date.parse(`${expires}T00:00:00Z`);
+  return Number.isNaN(timestamp) || timestamp < Date.now();
+}
+
+function parseBoolean(value: string): boolean | undefined {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return undefined;
 }
 
 function globMatches(pattern: string, value: string): boolean {

@@ -35,6 +35,10 @@ test("applyPolicy marks high severity findings as blocking by default", () => {
 test("applyPolicy honors rule suppressions", () => {
   const policy = loadPolicyFromText([
     "mode: block",
+    "suppressionPolicy:",
+    "  requireReason: false",
+    "  requireReviewer: false",
+    "  requireExpiration: false",
     "suppressions:",
     "  - rule: js-eval",
     "    file: src/app.js"
@@ -43,6 +47,87 @@ test("applyPolicy honors rule suppressions", () => {
   const results = applyPolicy([finding()], policy);
 
   assert.equal(results.length, 0);
+});
+
+test("enterprise suppressions require reason, reviewer, and unexpired date", () => {
+  const policy = loadPolicyFromText([
+    "mode: block",
+    "suppressionPolicy:",
+    "  requireReason: true",
+    "  requireReviewer: true",
+    "  requireExpiration: true",
+    "suppressions:",
+    "  - rule: js-eval",
+    "    file: src/app.js",
+    "    reason: accepted for migration",
+    "    reviewer: security@example.com",
+    "    expires: 2099-01-01"
+  ].join("\n"));
+
+  const results = applyPolicy([finding()], policy);
+
+  assert.equal(results.length, 0);
+});
+
+test("expired suppressions do not hide findings", () => {
+  const policy = loadPolicyFromText([
+    "mode: block",
+    "suppressionPolicy:",
+    "  requireReason: true",
+    "  requireReviewer: true",
+    "  requireExpiration: true",
+    "suppressions:",
+    "  - rule: js-eval",
+    "    file: src/app.js",
+    "    reason: accepted for migration",
+    "    reviewer: security@example.com",
+    "    expires: 2020-01-01"
+  ].join("\n"));
+
+  const results = applyPolicy([finding()], policy);
+
+  assert.equal(results.length, 1);
+  assert.equal(results[0].blocking, true);
+});
+
+test("suppressions missing required reviewer do not hide findings", () => {
+  const policy = loadPolicyFromText([
+    "mode: block",
+    "suppressionPolicy:",
+    "  requireReason: true",
+    "  requireReviewer: true",
+    "  requireExpiration: true",
+    "suppressions:",
+    "  - rule: js-eval",
+    "    file: src/app.js",
+    "    reason: accepted for migration",
+    "    expires: 2099-01-01"
+  ].join("\n"));
+
+  const results = applyPolicy([finding()], policy);
+
+  assert.equal(results.length, 1);
+  assert.equal(results[0].blocking, true);
+});
+
+test("suppressions missing required expiration do not hide findings", () => {
+  const policy = loadPolicyFromText([
+    "mode: block",
+    "suppressionPolicy:",
+    "  requireReason: true",
+    "  requireReviewer: true",
+    "  requireExpiration: true",
+    "suppressions:",
+    "  - rule: js-eval",
+    "    file: src/app.js",
+    "    reason: accepted for migration",
+    "    reviewer: security@example.com"
+  ].join("\n"));
+
+  const results = applyPolicy([finding()], policy);
+
+  assert.equal(results.length, 1);
+  assert.equal(results[0].blocking, true);
 });
 
 test("createFindingId is stable for the same rule and location", () => {

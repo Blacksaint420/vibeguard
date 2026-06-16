@@ -17,7 +17,7 @@ export type ParsedCommand =
   | ({ name: "check" } & ScanCommandOptions)
   | ({ name: "report" } & ScanCommandOptions)
   | ({ name: "baseline"; output: string } & ScanCommandOptions)
-  | { name: "suppress"; id: string; file?: string; line?: number; reason?: string; config?: string }
+  | { name: "suppress"; id: string; file?: string; line?: number; reason?: string; reviewer?: string; expires?: string; config?: string }
   | { name: "help" };
 
 type ScanCommandOptions = {
@@ -70,10 +70,16 @@ export function parseArgs(argv: string[]): ParsedCommand {
   }
   if (command === "suppress") {
     const id = rest[0];
-    if (!id) throw new Error("Usage: vibeguard suppress <finding_id_or_rule_id> [--file <path>] [--line <n>] [--reason <text>]");
+    if (!id) {
+      throw new Error(
+        "Usage: vibeguard suppress <finding_id_or_rule_id> [--file <path>] [--line <n>] [--reason <text>] [--reviewer <email>] [--expires <YYYY-MM-DD>]"
+      );
+    }
     let file: string | undefined;
     let line: number | undefined;
     let reason: string | undefined;
+    let reviewer: string | undefined;
+    let expires: string | undefined;
     let config: string | undefined;
 
     for (let index = 1; index < rest.length; index += 1) {
@@ -87,6 +93,12 @@ export function parseArgs(argv: string[]): ParsedCommand {
       } else if (arg === "--reason") {
         reason = requiredValue(rest[index + 1], "--reason");
         index += 1;
+      } else if (arg === "--reviewer") {
+        reviewer = requiredValue(rest[index + 1], "--reviewer");
+        index += 1;
+      } else if (arg === "--expires") {
+        expires = requiredValue(rest[index + 1], "--expires");
+        index += 1;
       } else if (arg === "--config") {
         config = requiredValue(rest[index + 1], "--config");
         index += 1;
@@ -95,7 +107,7 @@ export function parseArgs(argv: string[]): ParsedCommand {
       }
     }
 
-    return { name: "suppress", id, file, line, reason, config };
+    return { name: "suppress", id, file, line, reason, reviewer, expires, config };
   }
 
   if (command === "--help" || command === "-h" || command === "help") return { name: "help" };
@@ -201,7 +213,7 @@ function helpText(): string {
     "  vibeguard check [--vuln-provider null|mock|osv]",
     "  vibeguard baseline [path] [--output vibeguard-baseline.json]",
     "  vibeguard report [path] [--format json|sarif|markdown|html|risk-json] [--output report.html]",
-    "  vibeguard suppress <finding_id_or_rule_id> [--file <path>] [--line <n>] [--reason <text>]",
+    "  vibeguard suppress <finding_id_or_rule_id> [--file <path>] [--line <n>] [--reason <text>] [--reviewer <email>] [--expires <YYYY-MM-DD>]",
     "  vibeguard explain <finding_id_or_rule_id>",
     "  vibeguard doctor",
     ""
@@ -374,7 +386,9 @@ function addSuppression(text: string, command: Extract<ParsedCommand, { name: "s
     `  - rule: ${yamlScalar(command.id)}`,
     command.file ? `    file: ${yamlScalar(command.file)}` : undefined,
     command.line ? `    line: ${command.line}` : undefined,
-    command.reason ? `    reason: ${yamlScalar(command.reason)}` : undefined
+    command.reason ? `    reason: ${yamlScalar(command.reason)}` : undefined,
+    command.reviewer ? `    reviewer: ${yamlScalar(command.reviewer)}` : undefined,
+    command.expires ? `    expires: ${yamlScalar(command.expires)}` : undefined
   ].filter(Boolean).join("\n");
 
   if (text.includes("suppressions: []")) {

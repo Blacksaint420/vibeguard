@@ -96,6 +96,14 @@ export type Suppression = {
   file?: string;
   line?: number;
   reason?: string;
+  reviewer?: string;
+  expires?: string;
+};
+
+export type SuppressionPolicy = {
+  requireReason: boolean;
+  requireReviewer: boolean;
+  requireExpiration: boolean;
 };
 
 export type Policy = {
@@ -105,6 +113,7 @@ export type Policy = {
   include: string[];
   exclude: string[];
   suppressions: Suppression[];
+  suppressionPolicy: SuppressionPolicy;
   minConfidence?: Confidence;
   aiPrompts: {
     enabled: boolean;
