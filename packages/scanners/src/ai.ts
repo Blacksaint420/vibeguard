@@ -213,7 +213,7 @@ function stripStringsAndComments(line: string, path: string, state: StripState):
     if (char === "\"" || char === "'") {
       const { end, inner } = readStringLiteral(line, index, char);
       const nextMeaningful = nextNonWhitespace(line, end + 1);
-      if (nextMeaningful === ":") {
+      if (nextMeaningful === ":" && isPlausibleObjectKey(line, index)) {
         output += inner;
       } else {
         output += " ".repeat(end + 1 - index);
@@ -276,4 +276,12 @@ function nextNonWhitespace(line: string, start: number): string | undefined {
     if (!/\s/.test(line[index])) return line[index];
   }
   return undefined;
+}
+
+function isPlausibleObjectKey(line: string, stringStart: number): boolean {
+  for (let index = stringStart - 1; index >= 0; index -= 1) {
+    if (/\s/.test(line[index])) continue;
+    return line[index] === "{" || line[index] === ",";
+  }
+  return true;
 }

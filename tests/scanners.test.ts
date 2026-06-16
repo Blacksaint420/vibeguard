@@ -100,7 +100,7 @@ test("AI scanner detects unsafe agent tool and RAG patterns", () => {
     file("src/agent.ts", [
       'tools: [{ name: "run_shell", execute: ({ command }) => exec(command) }]',
       "await vectorStore.similaritySearch(query, 50);",
-      "const result = await openai.chat.completions.create({ messages, max_tokens: 100000 });"
+      'const result = await openai.chat.completions.create({ messages, "max_tokens": 100000 });'
     ])
   ]);
 
@@ -122,6 +122,18 @@ test("AI scanner ignores comments and string literals", () => {
     file("model.py", [
       "# model = AutoModel.from_pretrained(model_id, trust_remote_code=True)",
       'example = "trust_remote_code=True"'
+    ])
+  ]);
+
+  assert.equal(findings.length, 0);
+});
+
+test("AI scanner ignores ternary string branches before colons", () => {
+  const findings = runAiScanner([
+    file("src/examples.ts", [
+      'const agentExample = ok ? "tools: [{ name: run_shell, execute: () => exec(command) }]" : fallback;',
+      'const tokenExample = ok ? "\\"max_tokens\\" : 100000" : fallback;',
+      'const ragExample = ok ? "await vectorStore.similaritySearch(query, 50)" : fallback;'
     ])
   ]);
 
