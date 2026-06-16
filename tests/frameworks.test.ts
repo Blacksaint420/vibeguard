@@ -51,6 +51,19 @@ test("unknown rules keep technical findings and receive default risk context", (
   assert.equal(enriched.risk?.category, "Unmapped technical finding");
 });
 
+test("known unmapped built-in rules stay stable while unknown rules remain custom", () => {
+  const builtIn = enrichFindingWithEnterpriseContext(technicalFinding("py-yaml-unsafe-load"));
+  const custom = enrichFindingWithEnterpriseContext(technicalFinding("custom-rule"));
+
+  assert.equal(builtIn.rule?.id, "py-yaml-unsafe-load");
+  assert.equal(builtIn.rule?.version, "2026.06.11");
+  assert.equal(builtIn.rule?.stability, "stable");
+  assert.equal(builtIn.rule?.scanner, "code");
+  assert.equal(builtIn.frameworks.length, 0);
+  assert.equal(builtIn.risk?.category, "Unmapped technical finding");
+  assert.equal(custom.rule?.stability, "custom");
+});
+
 test("stable built-in rules expose version metadata", () => {
   const enriched = enrichFindingWithEnterpriseContext(technicalFinding("ai-model-trust-remote-code"));
 

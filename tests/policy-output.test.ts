@@ -221,6 +221,9 @@ test("formatters render table, JSON, SARIF, and Markdown", () => {
 test("renderRiskJson emits GRC risk report with technical evidence", () => {
   const findings = applyPolicy([
     finding({
+      title: "JavaScript eval usage",
+      snippet: "eval(req.body.code)",
+      evidence: "The code executes a string dynamically with eval.",
       rule: {
         id: "js-eval",
         name: "JavaScript eval",
@@ -255,6 +258,9 @@ test("renderRiskJson emits GRC risk report with technical evidence", () => {
   assert.equal(report.risks[0].technicalEvidence[0].ruleId, "js-eval");
   assert.equal(report.risks[0].technicalEvidence[0].file, "src/app.js");
   assert.equal(report.risks[0].technicalEvidence[0].line, 3);
+  assert.equal(report.risks[0].technicalEvidence[0].title, "JavaScript eval usage");
+  assert.equal(report.risks[0].technicalEvidence[0].snippet, "eval(req.body.code)");
+  assert.equal(report.risks[0].technicalEvidence[0].evidence, "The code executes a string dynamically with eval.");
 });
 
 test("renderRiskJson summarizes unmapped findings consistently", () => {

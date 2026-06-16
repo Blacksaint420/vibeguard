@@ -1,8 +1,7 @@
 import type { Finding, FrameworkId, FrameworkMapping, RuleMetadata } from "../types.ts";
 import { FRAMEWORK_CATALOG } from "./catalog.ts";
 import type { RuleEnterpriseContext } from "./types.ts";
-
-const RULE_VERSION = "2026.06.11";
+import { BUILT_IN_RULE_VERSION, builtInRuleMetadata } from "../rules.ts";
 
 type FrameworkMappingDefinition = Omit<FrameworkMapping, "sourceVersion">;
 type RuleEnterpriseContextDefinition = Omit<RuleEnterpriseContext, "frameworks"> & {
@@ -10,10 +9,10 @@ type RuleEnterpriseContextDefinition = Omit<RuleEnterpriseContext, "frameworks">
 };
 
 const DEFAULT_CONTEXT = (ruleId: string): RuleEnterpriseContextDefinition => ({
-  rule: {
+  rule: builtInRuleMetadata(ruleId) ?? {
     id: ruleId,
     name: ruleId,
-    version: RULE_VERSION,
+    version: BUILT_IN_RULE_VERSION,
     stability: "custom"
   },
   frameworks: [],
@@ -132,7 +131,17 @@ const CONTEXT_BY_RULE: Record<string, RuleEnterpriseContextDefinition> = {
 
 export function enrichFindingWithEnterpriseContext(finding: Finding): Finding {
   const context = CONTEXT_BY_RULE[finding.ruleId] ?? DEFAULT_CONTEXT(finding.ruleId);
-  const rule = finding.rule ?? context.rule;
+  const knownBuiltInRule = builtInRuleMetadata(finding.ruleId);
+  const rule = knownBuiltInRule
+    ? {
+        ...knownBuiltInRule,
+        ...(finding.rule ?? {}),
+        id: knownBuiltInRule.id,
+        version: knownBuiltInRule.version,
+        stability: knownBuiltInRule.stability,
+        scanner: finding.rule?.scanner ?? knownBuiltInRule.scanner
+      }
+    : finding.rule ?? context.rule;
   const frameworks = finding.frameworks?.length ? finding.frameworks : context.frameworks;
   const risk = finding.risk ?? context.risk;
   const controlGaps = finding.controlGaps?.length ? finding.controlGaps : context.controlGaps;
@@ -147,10 +156,10 @@ export function enrichFindingWithEnterpriseContext(finding: Finding): Finding {
 }
 
 function stableRule(id: string, name: string, scanner: RuleMetadata["scanner"]): RuleMetadata {
-  return {
+  return builtInRuleMetadata(id) ?? {
     id,
     name,
-    version: RULE_VERSION,
+    version: BUILT_IN_RULE_VERSION,
     stability: "stable",
     scanner
   };

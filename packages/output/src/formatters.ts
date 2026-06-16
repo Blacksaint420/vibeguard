@@ -14,10 +14,13 @@ type GrcRiskEntry = {
     id: string;
     ruleId: string;
     ruleVersion?: string;
+    title: string;
     severity: Finding["severity"];
     confidence: Finding["confidence"];
     file: string;
     line: number;
+    snippet: string;
+    evidence: string;
     scanner: string;
     impact: string;
     suggestedFix: string;
@@ -359,10 +362,13 @@ function buildGrcRisks(findings: Finding[]): GrcRiskEntry[] {
           id: finding.id,
           ruleId: finding.ruleId,
           ruleVersion: finding.rule?.version,
+          title: finding.title,
           severity: finding.severity,
           confidence: finding.confidence,
           file: finding.file,
           line: finding.line,
+          snippet: finding.snippet,
+          evidence: finding.evidence ?? finding.snippet,
           scanner: finding.scanner ?? finding.rule?.scanner ?? "unknown",
           impact: finding.impact ?? finding.why,
           suggestedFix: finding.suggestedFix,
