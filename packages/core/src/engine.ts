@@ -2,6 +2,7 @@ import { collectGitDiff, parseUnifiedDiff } from "./diff.ts";
 import { applyPolicy, defaultPolicy, loadPolicy, shouldScanFile } from "./policy.ts";
 import { collectRepository } from "./repository.ts";
 import { createVulnerabilityProvider } from "./vulnerabilities.ts";
+import { enrichFindingWithEnterpriseContext } from "./frameworks/crosswalk.ts";
 import type { CheckOptions, CheckResult, Confidence, DiffFile, Policy, ScanWarning } from "./types.ts";
 import { runScanners } from "../../scanners/src/index.ts";
 import { runVulnerabilityScanner } from "../../scanners/src/dependencies.ts";
@@ -15,8 +16,9 @@ export async function runCheck(options: CheckOptions = {}): Promise<CheckResult>
   const vulnerabilityFindings = options.vulnProvider && options.vulnProvider !== "null"
     ? await runVulnerabilityScanner(collection.files, createVulnerabilityProvider(options.vulnProvider))
     : [];
+  const enrichedFindings = [...scannerFindings, ...vulnerabilityFindings].map(enrichFindingWithEnterpriseContext);
   const filtered = filterFindings(
-    applyPolicy([...scannerFindings, ...vulnerabilityFindings], policy),
+    applyPolicy(enrichedFindings, policy),
     options.minConfidence ?? policy.minConfidence,
     options.maxFindings,
     options.baselineFindingIds

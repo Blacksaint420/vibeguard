@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { applyPolicy, defaultPolicy, loadPolicyFromText } from "../packages/core/src/policy.ts";
+import { runCheckFromDiff } from "../packages/core/src/engine.ts";
 import { createFindingId } from "../packages/core/src/types.ts";
 import { renderJson, renderMarkdown, renderSarif, renderTable } from "../packages/output/src/formatters.ts";
 
@@ -63,4 +64,22 @@ test("formatters render table, JSON, SARIF, and Markdown", () => {
   assert.equal(sarif.runs[0].results[0].ruleId, "js-eval");
   assert.equal(table.includes("js-eval"), true);
   assert.equal(markdown.includes("## VibeGuard Security Summary"), true);
+});
+
+test("runCheck enriches findings with enterprise context before rendering", async () => {
+  const diff = [
+    "diff --git a/src/app.js b/src/app.js",
+    "index 0000000..abc1234 100644",
+    "--- a/src/app.js",
+    "+++ b/src/app.js",
+    "@@ -0,0 +1 @@",
+    "+eval(req.body.code);"
+  ].join("\n");
+
+  const report = await runCheckFromDiff(diff);
+
+  assert.equal(report.findings[0].rule?.version, "2026.06.11");
+  assert.equal(report.findings[0].frameworks?.some((entry) => entry.framework === "owasp-llm-2025"), true);
+  assert.equal(report.findings[0].risk?.category, "AI application security");
+  assert.equal(report.findings[0].snippet, "eval(req.body.code);");
 });
