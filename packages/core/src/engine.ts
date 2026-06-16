@@ -1,4 +1,4 @@
-import { collectGitDiff, parseUnifiedDiff } from "./diff.ts";
+import { collectGitDiff, enrichDiffFilesWithFullContext, parseUnifiedDiff } from "./diff.ts";
 import { applyPolicy, defaultPolicy, loadPolicy, shouldScanFile } from "./policy.ts";
 import { collectRepository } from "./repository.ts";
 import { createVulnerabilityProvider } from "./vulnerabilities.ts";
@@ -66,8 +66,12 @@ function collectFilesForCheck(options: CheckOptions, cwd: string, policy: Policy
 
   if (options.diffText || options.staged || options.base) {
     const diffText = options.diffText ?? collectGitDiff({ ...options, cwd });
+    const files = enrichDiffFilesWithFullContext(parseUnifiedDiff(diffText), {
+      cwd,
+      staged: options.staged
+    });
     return {
-      files: parseUnifiedDiff(diffText).filter((file) => shouldScanFile(file.path, policy)),
+      files: files.filter((file) => shouldScanFile(file.path, policy)),
       warnings: [],
       scanMode: "diff",
       targetPath: cwd

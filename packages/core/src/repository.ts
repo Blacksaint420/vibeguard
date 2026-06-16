@@ -84,12 +84,15 @@ function fileToDiffFile(root: string, fullPath: string, warnings: ScanWarning[])
   const lines = content.split(/\r?\n/);
   if (lines.at(-1) === "") lines.pop();
 
+  const allLines = lines.map((line, index) => ({ line: index + 1, content: line }));
+
   return {
     path,
     oldPath: path,
     status: "modified",
-    addedLines: lines.map((line, index) => ({ line: index + 1, content: line })),
-    removedLines: []
+    addedLines: allLines,
+    removedLines: [],
+    allLines
   };
 }
 

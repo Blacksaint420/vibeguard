@@ -105,9 +105,12 @@ export function runAiScanner(files: DiffFile[]): Finding[] {
     if (isVendoredOrGeneratedPath(file.path)) continue;
     if (!isJavaScriptFile(file.path) && !isPythonFile(file.path)) continue;
 
+    const addedLineNumbers = new Set(file.addedLines.map((line) => line.line));
+    const linesToScan = file.allLines ?? file.addedLines;
     const stripState: StripState = { inBlockComment: false, inTemplateLiteral: false };
-    for (const line of file.addedLines) {
+    for (const line of linesToScan) {
       const matchTarget = stripStringsAndComments(line.content, file.path, stripState);
+      if (!addedLineNumbers.has(line.line)) continue;
       if (!matchTarget.trim()) continue;
       for (const rule of RULES) {
         if (!rule.matches(matchTarget)) continue;

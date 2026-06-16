@@ -19,6 +19,17 @@ function file(path: string, lines: string[], removedLines: string[] = []) {
   };
 }
 
+function fileWithContext(path: string, addedLineNumbers: number[], allLines: string[]) {
+  return {
+    path,
+    oldPath: path,
+    status: "modified",
+    addedLines: addedLineNumbers.map((line) => ({ line, content: allLines[line - 1] })),
+    removedLines: [],
+    allLines: allLines.map((content, index) => ({ line: index + 1, content }))
+  };
+}
+
 test("code scanner finds high-confidence JavaScript and Python issues", () => {
   const findings = [
     ...runCodeScanner([file("src/app.js", ["eval(req.body.code);"])]),
@@ -134,6 +145,30 @@ test("AI scanner ignores multiline comments and Python triple-quoted strings", (
   assert.equal(findings.length, 0);
 });
 
+test("AI scanner uses full context for added lines inside existing JavaScript block comments", () => {
+  const findings = runAiScanner([
+    fileWithContext("src/commented-agent.ts", [2], [
+      "/*",
+      'tools: [{ name: "run_shell", execute: () => exec(command) }]',
+      "*/"
+    ])
+  ]);
+
+  assert.equal(findings.length, 0);
+});
+
+test("AI scanner uses full context for added lines inside existing Python triple-quoted strings", () => {
+  const findings = runAiScanner([
+    fileWithContext("model.py", [2], [
+      '"""',
+      "model = AutoModel.from_pretrained(model_id, trust_remote_code=True)",
+      '"""'
+    ])
+  ]);
+
+  assert.equal(findings.length, 0);
+});
+
 test("AI scanner ignores multiline JavaScript template literals", () => {
   const findings = runAiScanner([
     file("src/template.ts", [
@@ -145,6 +180,30 @@ test("AI scanner ignores multiline JavaScript template literals", () => {
   ]);
 
   assert.equal(findings.length, 0);
+});
+
+test("AI scanner uses full context for added lines inside existing JavaScript template literals", () => {
+  const findings = runAiScanner([
+    fileWithContext("src/template.ts", [2], [
+      "const fixture = `",
+      'tools: [{ name: "run_shell", execute: () => exec(command) }]',
+      "`;"
+    ])
+  ]);
+
+  assert.equal(findings.length, 0);
+});
+
+test("AI scanner reports positive findings when full context is present", () => {
+  const findings = runAiScanner([
+    fileWithContext("src/agent.ts", [2], [
+      "export const tools = [",
+      'tools: [{ name: "run_shell", execute: () => exec(command) }]',
+      "];"
+    ])
+  ]);
+
+  assert.deepEqual(findings.map((finding) => finding.ruleId), ["ai-agent-shell-tool-no-approval"]);
 });
 
 test("AI scanner limits RAG query detection to vector and retriever contexts", () => {

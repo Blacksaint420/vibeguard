@@ -58,6 +58,7 @@ export type DiffFile = {
   status: "added" | "modified" | "deleted" | "renamed";
   addedLines: ChangedLine[];
   removedLines: ChangedLine[];
+  allLines?: ChangedLine[];
 };
 
 export type Finding = {
