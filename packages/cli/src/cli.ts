@@ -5,7 +5,12 @@ import { baselineFindingIds, createBaseline, DEFAULT_BASELINE_PATH, loadBaseline
 import { collectGitDiff } from "../../core/src/diff.ts";
 import { explainRule } from "../../core/src/explain.ts";
 import { runCheck } from "../../core/src/engine.ts";
-import { DEFAULT_POLICY_TEXT, isValidSuppressionExpiration, loadPolicyFromText } from "../../core/src/policy.ts";
+import {
+  DEFAULT_POLICY_TEXT,
+  isExpiredSuppressionExpiration,
+  isValidSuppressionExpiration,
+  loadPolicyFromText
+} from "../../core/src/policy.ts";
 import { collectRepositoryFiles } from "../../core/src/repository.ts";
 import type { Confidence, DiffFile, OutputFormat } from "../../core/src/types.ts";
 import { renderFindings } from "../../output/src/formatters.ts";
@@ -396,6 +401,10 @@ function validateSuppressionCommand(command: Extract<ParsedCommand, { name: "sup
 
   if (command.expires && !isValidSuppressionExpiration(command.expires)) {
     throw new Error("--expires must be a valid YYYY-MM-DD date");
+  }
+
+  if (command.expires && isExpiredSuppressionExpiration(command.expires)) {
+    throw new Error("--expires must be a future or current YYYY-MM-DD date");
   }
 }
 

@@ -189,11 +189,11 @@ function isValidSuppression(suppression: Suppression, suppressionPolicy: Suppres
   if (suppressionPolicy.requireReason && !suppression.reason?.trim()) return false;
   if (suppressionPolicy.requireReviewer && !suppression.reviewer?.trim()) return false;
   if (suppressionPolicy.requireExpiration && !suppression.expires?.trim()) return false;
-  if (suppression.expires && isExpired(suppression.expires)) return false;
+  if (suppression.expires && isExpiredSuppressionExpiration(suppression.expires)) return false;
   return true;
 }
 
-function isExpired(expires: string): boolean {
+export function isExpiredSuppressionExpiration(expires: string): boolean {
   const timestamp = parseExpirationEnd(expires);
   return timestamp === undefined || timestamp < Date.now();
 }

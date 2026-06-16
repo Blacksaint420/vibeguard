@@ -131,6 +131,31 @@ test("runCli rejects malformed suppression expiration", async () => {
   assert.equal(existsSync(join(cwd, "vibeguard.yml")), false);
 });
 
+test("runCli rejects expired suppression expiration", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "vibeguard-cli-"));
+  const errors: string[] = [];
+  const result = await runCli([
+    "suppress",
+    "js-eval",
+    "--file",
+    "src/app.js",
+    "--reason",
+    "accepted for migration",
+    "--reviewer",
+    "security@example.com",
+    "--expires",
+    "2020-01-01"
+  ], {
+    cwd,
+    stdout: () => {},
+    stderr: (text) => errors.push(text)
+  });
+
+  assert.equal(result.exitCode, 2);
+  assert.equal(errors.join("").includes("--expires must be a future or current YYYY-MM-DD date"), true);
+  assert.equal(existsSync(join(cwd, "vibeguard.yml")), false);
+});
+
 test("runCli appends legacy suppressions when config has no suppression policy", async () => {
   const cwd = mkdtempSync(join(tmpdir(), "vibeguard-cli-"));
   const configPath = join(cwd, "vibeguard.yml");
