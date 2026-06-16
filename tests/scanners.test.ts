@@ -117,6 +117,23 @@ test("AI scanner ignores comments and string literals", () => {
   assert.equal(findings.length, 0);
 });
 
+test("AI scanner ignores multiline comments and Python triple-quoted strings", () => {
+  const findings = runAiScanner([
+    file("src/commented-agent.ts", [
+      "/*",
+      'tools: [{ name: "run_shell", execute: () => exec(command) }]',
+      "*/"
+    ]),
+    file("model.py", [
+      '"""',
+      "model = AutoModel.from_pretrained(model_id, trust_remote_code=True)",
+      '"""'
+    ])
+  ]);
+
+  assert.equal(findings.length, 0);
+});
+
 test("AI scanner limits RAG query detection to vector and retriever contexts", () => {
   const findings = runAiScanner([
     file("src/search.ts", [

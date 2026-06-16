@@ -19,6 +19,11 @@ type Rule = {
   test: string;
 };
 
+type StripState = {
+  inBlockComment: boolean;
+  pythonTripleQuote?: "\"\"\"" | "'''";
+};
+
 const RULES: Rule[] = [
   {
     id: "ai-agent-shell-tool-no-approval",
@@ -99,8 +104,9 @@ export function runAiScanner(files: DiffFile[]): Finding[] {
     if (isVendoredOrGeneratedPath(file.path)) continue;
     if (!isJavaScriptFile(file.path) && !isPythonFile(file.path)) continue;
 
+    const stripState: StripState = { inBlockComment: false };
     for (const line of file.addedLines) {
-      const matchTarget = stripStringsAndComments(line.content, file.path);
+      const matchTarget = stripStringsAndComments(line.content, file.path, stripState);
       if (!matchTarget.trim()) continue;
       for (const rule of RULES) {
         if (!rule.matches(matchTarget)) continue;
@@ -128,7 +134,7 @@ export function runAiScanner(files: DiffFile[]): Finding[] {
   return findings;
 }
 
-function stripStringsAndComments(line: string, path: string): string {
+function stripStringsAndComments(line: string, path: string, state: StripState): string {
   let output = "";
   let index = 0;
   const isJavaScript = isJavaScriptFile(path);
@@ -137,15 +143,48 @@ function stripStringsAndComments(line: string, path: string): string {
     const char = line[index];
     const next = line[index + 1];
 
+    if (state.inBlockComment) {
+      const end = line.indexOf("*/", index);
+      if (end === -1) return output;
+      output += " ".repeat(end + 2 - index);
+      index = end + 2;
+      state.inBlockComment = false;
+      continue;
+    }
+
+    if (state.pythonTripleQuote) {
+      const end = line.indexOf(state.pythonTripleQuote, index);
+      if (end === -1) return output;
+      output += " ".repeat(end + state.pythonTripleQuote.length - index);
+      index = end + state.pythonTripleQuote.length;
+      state.pythonTripleQuote = undefined;
+      continue;
+    }
+
     if (isJavaScript && char === "/" && next === "/") break;
     if (isJavaScript && char === "/" && next === "*") {
       const end = line.indexOf("*/", index + 2);
-      if (end === -1) break;
+      if (end === -1) {
+        state.inBlockComment = true;
+        break;
+      }
       output += " ".repeat(end + 2 - index);
       index = end + 2;
       continue;
     }
     if (!isJavaScript && char === "#") break;
+
+    if (!isJavaScript && (line.startsWith('"""', index) || line.startsWith("'''", index))) {
+      const quote = line.slice(index, index + 3) as StripState["pythonTripleQuote"];
+      const end = line.indexOf(quote, index + 3);
+      if (end === -1) {
+        state.pythonTripleQuote = quote;
+        break;
+      }
+      output += " ".repeat(end + 3 - index);
+      index = end + 3;
+      continue;
+    }
 
     if (char === "\"" || char === "'" || (isJavaScript && char === "`")) {
       const { end, inner } = readStringLiteral(line, index, char);
