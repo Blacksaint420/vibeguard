@@ -1,5 +1,7 @@
 import type { Finding, FrameworkId, RiskLevel } from "./types.ts";
 
+export const UNMAPPED_GRC_RISK_CATEGORY = "Unmapped technical finding";
+
 export type GrcRiskSummary = {
   totalFindings: number;
   byCategory: Array<{ category: string; count: number; highestSeverity: RiskLevel }>;
@@ -13,12 +15,12 @@ export function summarizeGrcRisks(findings: Finding[]): GrcRiskSummary {
   const controlGaps = new Map<string, number>();
 
   for (const finding of findings) {
-    if (finding.risk) {
-      const current = byCategory.get(finding.risk.category) ?? { count: 0, highestSeverity: "low" };
-      current.count += 1;
-      current.highestSeverity = higherRisk(current.highestSeverity, finding.risk.severity);
-      byCategory.set(finding.risk.category, current);
-    }
+    const category = finding.risk?.category ?? UNMAPPED_GRC_RISK_CATEGORY;
+    const severity = finding.risk?.severity ?? finding.severity;
+    const current = byCategory.get(category) ?? { count: 0, highestSeverity: "low" };
+    current.count += 1;
+    current.highestSeverity = higherRisk(current.highestSeverity, severity);
+    byCategory.set(category, current);
 
     for (const mapping of finding.frameworks ?? []) {
       byFramework.set(mapping.framework, (byFramework.get(mapping.framework) ?? 0) + 1);

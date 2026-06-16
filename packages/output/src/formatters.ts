@@ -1,6 +1,6 @@
 import { severityRank } from "../../core/src/types.ts";
 import { summarizeOwaspFindings } from "../../core/src/owasp.ts";
-import { summarizeGrcRisks } from "../../core/src/risk.ts";
+import { summarizeGrcRisks, UNMAPPED_GRC_RISK_CATEGORY } from "../../core/src/risk.ts";
 import type { CheckResult, Finding, ReportRecommendation } from "../../core/src/types.ts";
 
 type ReportLike = Finding[] | CheckResult;
@@ -337,7 +337,7 @@ export function renderFindings(reportLike: ReportLike, format = "table"): string
 
 function buildGrcRisks(findings: Finding[]): GrcRiskEntry[] {
   return [...findings.reduce<Map<string, Finding[]>>((accumulator, finding) => {
-    const category = finding.risk?.category ?? "Unmapped technical finding";
+    const category = finding.risk?.category ?? UNMAPPED_GRC_RISK_CATEGORY;
     accumulator.set(category, [...(accumulator.get(category) ?? []), finding]);
     return accumulator;
   }, new Map()).entries()]

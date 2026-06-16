@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { applyPolicy, defaultPolicy, loadPolicyFromText } from "../packages/core/src/policy.ts";
 import { runCheckFromDiff } from "../packages/core/src/engine.ts";
 import { createFindingId } from "../packages/core/src/types.ts";
-import { renderJson, renderMarkdown, renderRiskJson, renderSarif, renderTable } from "../packages/output/src/formatters.ts";
+import { renderFindings, renderJson, renderMarkdown, renderRiskJson, renderSarif, renderTable } from "../packages/output/src/formatters.ts";
 
 function finding(overrides = {}) {
   const base = {
@@ -103,6 +103,71 @@ test("renderRiskJson emits GRC risk report with technical evidence", () => {
   assert.equal(report.risks[0].technicalEvidence[0].ruleId, "js-eval");
   assert.equal(report.risks[0].technicalEvidence[0].file, "src/app.js");
   assert.equal(report.risks[0].technicalEvidence[0].line, 3);
+});
+
+test("renderRiskJson summarizes unmapped findings consistently", () => {
+  const report = JSON.parse(renderRiskJson([finding()]));
+
+  assert.deepEqual(report.riskSummary.byCategory, [
+    { category: "Unmapped technical finding", count: 1, highestSeverity: "high" }
+  ]);
+  assert.equal(report.risks[0].category, "Unmapped technical finding");
+  assert.equal(report.risks[0].technicalEvidence[0].ruleId, "js-eval");
+});
+
+test("renderFindings dispatches risk-json format", () => {
+  const direct = JSON.parse(renderRiskJson([finding()]));
+  const dispatched = JSON.parse(renderFindings([finding()], "risk-json"));
+
+  assert.equal(dispatched.reportType, "grc-risk");
+  assert.deepEqual(dispatched.riskSummary, direct.riskSummary);
+  assert.deepEqual(dispatched.risks, direct.risks);
+});
+
+test("renderRiskJson groups category details with unique metadata and highest severity", () => {
+  const framework = {
+    framework: "nist-ai-rmf",
+    id: "MAP-1",
+    name: "Map risks",
+    sourceVersion: "1.0"
+  };
+  const findings = [
+    finding({
+      id: "first",
+      severity: "medium",
+      frameworks: [framework],
+      risk: {
+        category: "AI application security",
+        likelihood: "medium",
+        impact: "medium",
+        severity: "medium",
+        controlOwner: "security"
+      },
+      controlGaps: ["Input validation", "Secure code review"]
+    }),
+    finding({
+      id: "second",
+      severity: "critical",
+      frameworks: [framework],
+      risk: {
+        category: "AI application security",
+        likelihood: "high",
+        impact: "critical",
+        severity: "critical",
+        controlOwner: "security"
+      },
+      controlGaps: ["Input validation"]
+    })
+  ];
+
+  const report = JSON.parse(renderRiskJson(findings));
+  const [risk] = report.risks;
+
+  assert.equal(risk.category, "AI application security");
+  assert.equal(risk.highestSeverity, "critical");
+  assert.equal(risk.frameworks.length, 1);
+  assert.deepEqual(risk.controlGaps, ["Input validation", "Secure code review"]);
+  assert.equal(risk.technicalEvidence.length, 2);
 });
 
 test("runCheck enriches findings with enterprise context before rendering", async () => {
