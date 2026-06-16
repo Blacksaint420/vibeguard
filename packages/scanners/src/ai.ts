@@ -47,7 +47,10 @@ const RULES: Rule[] = [
     riskScore: 78,
     owasp: owaspCategory("LLM08:2025"),
     matches: (line) =>
-      /\.(similaritySearch|query|retrieve)\s*\(\s*(query|input)\b/i.test(line) &&
+      (
+        /\.\s*similaritySearch\s*\(\s*(query|input)\b/i.test(line) ||
+        /\b[\w$]*(?:vector|embedding|retriever|rag|semantic|docStore|documentStore)[\w$]*\s*\.\s*(query|retrieve)\s*\(\s*(query|input)\b/i.test(line)
+      ) &&
       !/\b(filter|where|tenant|namespace|metadata|authz|scope)\b/i.test(line),
     evidence: "A RAG retrieval call uses query or input without an obvious filter, tenant scope, namespace, or metadata constraint.",
     attackPath: "Caller submits a query -> retriever searches broadly -> unauthorized documents can be returned into model context.",
@@ -97,8 +100,10 @@ export function runAiScanner(files: DiffFile[]): Finding[] {
     if (!isJavaScriptFile(file.path) && !isPythonFile(file.path)) continue;
 
     for (const line of file.addedLines) {
+      const matchTarget = stripStringsAndComments(line.content, file.path);
+      if (!matchTarget.trim()) continue;
       for (const rule of RULES) {
-        if (!rule.matches(line.content)) continue;
+        if (!rule.matches(matchTarget)) continue;
         findings.push(scannerFinding({
           ruleId: rule.id,
           title: rule.title,
@@ -121,4 +126,74 @@ export function runAiScanner(files: DiffFile[]): Finding[] {
   }
 
   return findings;
+}
+
+function stripStringsAndComments(line: string, path: string): string {
+  let output = "";
+  let index = 0;
+  const isJavaScript = isJavaScriptFile(path);
+
+  while (index < line.length) {
+    const char = line[index];
+    const next = line[index + 1];
+
+    if (isJavaScript && char === "/" && next === "/") break;
+    if (isJavaScript && char === "/" && next === "*") {
+      const end = line.indexOf("*/", index + 2);
+      if (end === -1) break;
+      output += " ".repeat(end + 2 - index);
+      index = end + 2;
+      continue;
+    }
+    if (!isJavaScript && char === "#") break;
+
+    if (char === "\"" || char === "'" || (isJavaScript && char === "`")) {
+      const { end, inner } = readStringLiteral(line, index, char);
+      const nextMeaningful = nextNonWhitespace(line, end + 1);
+      if (char !== "`" && nextMeaningful === ":") {
+        output += inner;
+      } else {
+        output += " ".repeat(end + 1 - index);
+      }
+      index = end + 1;
+      continue;
+    }
+
+    output += char;
+    index += 1;
+  }
+
+  return output;
+}
+
+function readStringLiteral(line: string, start: number, quote: string): { end: number; inner: string } {
+  let escaped = false;
+  let inner = "";
+
+  for (let index = start + 1; index < line.length; index += 1) {
+    const char = line[index];
+    if (escaped) {
+      escaped = false;
+      inner += " ";
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      inner += " ";
+      continue;
+    }
+    if (char === quote) {
+      return { end: index, inner };
+    }
+    inner += char;
+  }
+
+  return { end: line.length - 1, inner };
+}
+
+function nextNonWhitespace(line: string, start: number): string | undefined {
+  for (let index = start; index < line.length; index += 1) {
+    if (!/\s/.test(line[index])) return line[index];
+  }
+  return undefined;
 }

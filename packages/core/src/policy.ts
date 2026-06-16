@@ -75,6 +75,7 @@ export function loadPolicyFromText(text: string): Policy {
   let section = "";
   let currentSuppression: Suppression | undefined;
   let hasSuppressionPolicy = false;
+  let hasExplicitEnabledScanners = false;
 
   for (const rawLine of lines) {
     const line = rawLine.trimEnd();
@@ -85,6 +86,10 @@ export function loadPolicyFromText(text: string): Policy {
     if (topLevel && trimmed.endsWith(":")) {
       section = trimmed.slice(0, -1);
       if (section === "suppressionPolicy") hasSuppressionPolicy = true;
+      if (section === "enabledScanners" && !hasExplicitEnabledScanners) {
+        policy.enabledScanners = [];
+        hasExplicitEnabledScanners = true;
+      }
       continue;
     }
 

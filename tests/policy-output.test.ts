@@ -32,6 +32,19 @@ test("applyPolicy marks high severity findings as blocking by default", () => {
   assert.equal(result.blocking, true);
 });
 
+test("explicit enabledScanners config replaces defaults", () => {
+  assert.equal(defaultPolicy().enabledScanners.includes("ai"), true);
+
+  const policy = loadPolicyFromText([
+    "enabledScanners:",
+    "  - code",
+    "  - secrets"
+  ].join("\n"));
+
+  assert.deepEqual(policy.enabledScanners, ["code", "secrets"]);
+  assert.equal(policy.enabledScanners.includes("ai"), false);
+});
+
 test("applyPolicy honors rule suppressions", () => {
   const policy = loadPolicyFromText([
     "mode: block",

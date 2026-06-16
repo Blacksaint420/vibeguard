@@ -100,6 +100,34 @@ test("AI scanner detects unsafe agent tool and RAG patterns", () => {
   ]);
 });
 
+test("AI scanner ignores comments and string literals", () => {
+  const findings = runAiScanner([
+    file("src/notes.ts", [
+      '// tools: [{ name: "run_shell", execute: ({ command }) => exec(command) }]',
+      'const example = "tools: [{ name: \\"run_shell\\", execute: ({ command }) => exec(command) }]";',
+      'const tokenExample = "max_tokens: 100000";',
+      'const ragExample = "vectorStore.similaritySearch(query, 50)";'
+    ]),
+    file("model.py", [
+      "# model = AutoModel.from_pretrained(model_id, trust_remote_code=True)",
+      'example = "trust_remote_code=True"'
+    ])
+  ]);
+
+  assert.equal(findings.length, 0);
+});
+
+test("AI scanner limits RAG query detection to vector and retriever contexts", () => {
+  const findings = runAiScanner([
+    file("src/search.ts", [
+      "await db.query(input);",
+      "await retriever.query(input);"
+    ])
+  ]);
+
+  assert.deepEqual(findings.map((finding) => finding.ruleId), ["ai-rag-query-without-filter"]);
+});
+
 test("AI scanner detects unsafe model supply chain flags", () => {
   const findings = runAiScanner([
     file("model.py", ["model = AutoModel.from_pretrained(model_id, trust_remote_code=True)"])
