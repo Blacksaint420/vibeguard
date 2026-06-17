@@ -58,7 +58,9 @@ export function renderRiskJson(reportLike: ScanReportLike): string {
       reportType: "grc-risk",
       summary: report.summary,
       riskSummary: summarizeGrcRisks(report.findings),
-      risks: buildGrcRisks(report.findings)
+      risks: buildGrcRisks(report.findings),
+      aiBom: report.aiBom,
+      agentGraph: report.agentGraph
     },
     null,
     2

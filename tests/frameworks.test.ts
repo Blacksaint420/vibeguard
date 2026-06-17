@@ -150,3 +150,28 @@ test("AI scanner rules map to enterprise AI risk categories", () => {
   assert.equal(enrichFindingWithEnterpriseContext(technicalFinding("ai-unbounded-token-request")).risk?.category, "AI resource consumption");
   assert.equal(enrichFindingWithEnterpriseContext(technicalFinding("ai-model-trust-remote-code")).risk?.category, "AI supply chain");
 });
+
+test("agent capability graph rules have enterprise mappings", () => {
+  const enriched = enrichFindingWithEnterpriseContext(createFinding({
+    ruleId: "agent-capability-shell-without-approval",
+    title: "Agent can reach shell execution",
+    severity: "critical",
+    confidence: "high",
+    riskScore: 97,
+    file: "src/agent.ts",
+    line: 2,
+    snippet: "run_shell",
+    evidence: "support-agent can reach run_shell.",
+    attackPath: "Prompt injection reaches agent tool selection and shell execution.",
+    impact: "Autonomous command execution in the application runtime.",
+    why: "Shell access is a high-risk agent capability.",
+    suggestedFix: "Require approval and command allowlists.",
+    testSuggestion: "Add a test proving shell commands require approval.",
+    aiFixPrompt: "Require approval."
+  }));
+
+  assert.equal(enriched.rule?.id, "agent-capability-shell-without-approval");
+  assert.equal(enriched.rule?.scanner, "ai");
+  assert.equal(enriched.risk?.category, "Agentic AI excessive agency");
+  assert.equal(enriched.frameworks?.some((mapping) => mapping.framework === "owasp-llm-2025"), true);
+});

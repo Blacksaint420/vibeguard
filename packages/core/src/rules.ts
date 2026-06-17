@@ -55,6 +55,41 @@ const BUILT_IN_RULE_LIST: BuiltInRuleDefinition[] = [
     "Disable trust_remote_code, pin reviewed model revisions, and vendor or audit any required custom model code."
   ),
   builtInRule(
+    "agent-capability-shell-without-approval",
+    "Agent can reach shell execution",
+    "ai",
+    "An agent path to shell execution creates a prompt-influenceable command execution boundary.",
+    "Require explicit approval, structured arguments, and command allowlists before shell execution."
+  ),
+  builtInRule(
+    "agent-capability-filesystem-access",
+    "Agent can reach filesystem access",
+    "ai",
+    "Agent filesystem access can expose or overwrite source, prompts, credentials, and generated artifacts.",
+    "Constrain filesystem access to explicit roots and read/write permissions."
+  ),
+  builtInRule(
+    "agent-capability-database-access",
+    "Agent can reach database access",
+    "ai",
+    "Agent database access needs server-side authorization and scoped credentials because model-selected actions are attacker-influenceable.",
+    "Require authorization context, scoped credentials, and query allowlists before database access."
+  ),
+  builtInRule(
+    "agent-capability-secret-access",
+    "Agent can reach secret-bearing configuration",
+    "ai",
+    "Agent access to secrets can turn prompt injection into credential disclosure or lateral movement.",
+    "Remove direct secret exposure from tools and use brokered scoped credentials."
+  ),
+  builtInRule(
+    "agent-capability-mcp-tool-access",
+    "Agent can reach MCP tool capability",
+    "ai",
+    "MCP tool access expands agent authority beyond prompt text and needs explicit per-tool review.",
+    "Review MCP server capabilities and require approval for dangerous actions."
+  ),
+  builtInRule(
     "llm01-direct-prompt-injection",
     "User-controlled content enters system prompt",
     "code",

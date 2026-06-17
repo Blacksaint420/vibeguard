@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { buildAiBom, buildAgentCapabilityGraph } from "../packages/core/src/aibom/index.ts";
 import { applyPolicy, defaultPolicy, loadPolicyFromText } from "../packages/core/src/policy.ts";
-import { runCheckFromDiff } from "../packages/core/src/engine.ts";
+import { runCheck, runCheckFromDiff } from "../packages/core/src/engine.ts";
 import { createFindingId } from "../packages/core/src/types.ts";
 import { renderAgentGraphJson, renderAiBomJson, renderFindings, renderJson, renderMarkdown, renderRiskJson, renderSarif, renderTable } from "../packages/output/src/formatters.ts";
 
@@ -400,4 +400,28 @@ test("agent graph JSON renderer emits high-risk path summary", () => {
 
   assert.equal(output.schemaVersion, "vibeguard.agentGraph.v1");
   assert.equal(output.summary.highRiskPaths, 1);
+});
+
+test("risk JSON includes AI BOM and agent graph context from check results", async () => {
+  const report = await runCheck({
+    targetPath: "/repo",
+    repositoryFiles: [{
+      path: "src/agent.ts",
+      oldPath: "src/agent.ts",
+      status: "modified",
+      addedLines: [
+        { line: 1, content: "export const agent = createAgent({ name: 'support-agent', tools: [shellTool] });" },
+        { line: 2, content: "const shellTool = { name: 'run_shell', execute: ({ command }) => exec(command) };" }
+      ],
+      removedLines: [],
+      allLines: [
+        { line: 1, content: "export const agent = createAgent({ name: 'support-agent', tools: [shellTool] });" },
+        { line: 2, content: "const shellTool = { name: 'run_shell', execute: ({ command }) => exec(command) };" }
+      ]
+    }]
+  });
+  const output = JSON.parse(renderRiskJson(report));
+
+  assert.equal(output.aiBom.summary.agents, 1);
+  assert.equal(output.agentGraph.summary.highRiskPaths, 1);
 });

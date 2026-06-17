@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { AgentCapabilityGraph, AiBom } from "./aibom/index.ts";
 
 export type Severity = "low" | "medium" | "high" | "critical";
 export type Confidence = "low" | "medium" | "high";
@@ -163,6 +164,8 @@ export type ReportRecommendation = {
 export type CheckResult = {
   findings: Finding[];
   files: DiffFile[];
+  aiBom?: AiBom;
+  agentGraph?: AgentCapabilityGraph;
   summary: {
     filesChanged: number;
     filesScanned: number;

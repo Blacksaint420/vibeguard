@@ -126,7 +126,32 @@ const CONTEXT_BY_RULE: Record<string, RuleEnterpriseContextDefinition> = {
       controlOwner: "security"
     },
     controlGaps: ["model provenance", "artifact pinning", "supply chain review"]
-  }
+  },
+  "agent-capability-shell-without-approval": agentCapabilityContext(
+    "agent-capability-shell-without-approval",
+    "Agent can reach shell execution",
+    "command execution"
+  ),
+  "agent-capability-filesystem-access": agentCapabilityContext(
+    "agent-capability-filesystem-access",
+    "Agent can reach filesystem access",
+    "filesystem access"
+  ),
+  "agent-capability-database-access": agentCapabilityContext(
+    "agent-capability-database-access",
+    "Agent can reach database access",
+    "database access"
+  ),
+  "agent-capability-secret-access": agentCapabilityContext(
+    "agent-capability-secret-access",
+    "Agent can reach secret-bearing configuration",
+    "secret access"
+  ),
+  "agent-capability-mcp-tool-access": agentCapabilityContext(
+    "agent-capability-mcp-tool-access",
+    "Agent can reach MCP tool capability",
+    "MCP tool access"
+  )
 };
 
 export function enrichFindingWithEnterpriseContext(finding: Finding): Finding {
@@ -162,6 +187,26 @@ function stableRule(id: string, name: string, scanner: RuleMetadata["scanner"]):
     version: BUILT_IN_RULE_VERSION,
     stability: "stable",
     scanner
+  };
+}
+
+function agentCapabilityContext(id: string, name: string, gap: string): RuleEnterpriseContextDefinition {
+  return {
+    rule: stableRule(id, name, "ai"),
+    frameworks: [
+      frameworkMappingDefinition("owasp-llm-2025", "LLM06:2025", "Excessive Agency"),
+      frameworkMappingDefinition("nist-ai-rmf", "MANAGE", "Prioritize and respond to AI risks"),
+      frameworkMappingDefinition("mitre-atlas", "AML.T0051", "LLM Prompt Injection"),
+      frameworkMappingDefinition("google-saif", "input-output-controls", "Input and output controls")
+    ],
+    risk: {
+      category: "Agentic AI excessive agency",
+      likelihood: "high",
+      impact: "critical",
+      severity: "critical",
+      controlOwner: "engineering"
+    },
+    controlGaps: [gap, "tool approval", "least privilege", "runtime containment"]
   };
 }
 

@@ -1,4 +1,5 @@
 import { collectGitDiff, enrichDiffFilesWithFullContext, parseUnifiedDiff } from "./diff.ts";
+import { buildAiBom, buildAgentCapabilityGraph } from "./aibom/index.ts";
 import { applyPolicy, defaultPolicy, loadPolicy, shouldScanFile } from "./policy.ts";
 import { collectRepository } from "./repository.ts";
 import { createVulnerabilityProvider } from "./vulnerabilities.ts";
@@ -12,6 +13,8 @@ export async function runCheck(options: CheckOptions = {}): Promise<CheckResult>
   const cwd = options.cwd ?? process.cwd();
   const policy = options.policy ?? loadPolicy(cwd);
   const collection = collectFilesForCheck(options, cwd, policy);
+  const aiBom = buildAiBom(collection.files, { targetPath: collection.targetPath });
+  const agentGraph = buildAgentCapabilityGraph(aiBom);
   const scannerFindings = await runScanners(collection.files, policy.enabledScanners);
   const vulnerabilityFindings = options.vulnProvider && options.vulnProvider !== "null"
     ? await runVulnerabilityScanner(collection.files, createVulnerabilityProvider(options.vulnProvider))
@@ -27,6 +30,8 @@ export async function runCheck(options: CheckOptions = {}): Promise<CheckResult>
   return {
     files: collection.files,
     findings: filtered.findings,
+    aiBom,
+    agentGraph,
     summary: {
       filesChanged: collection.files.length,
       filesScanned: collection.files.length,
