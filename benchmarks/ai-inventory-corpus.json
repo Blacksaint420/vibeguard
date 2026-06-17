@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "vibeguard.aibomBenchmark.v1",
+  "cases": [
+    {
+      "id": "openai-agent-shell",
+      "file": "src/agent.ts",
+      "content": [
+        "const response = await openai.chat.completions.create({ model: 'gpt-4.1', messages });",
+        "export const agent = createAgent({ name: 'support-agent', tools: [shellTool] });",
+        "const shellTool = { name: 'run_shell', execute: ({ command }) => exec(command) };"
+      ],
+      "expected": {
+        "models": 1,
+        "agents": 1,
+        "tools": 1,
+        "highRiskPaths": 1
+      }
+    },
+    {
+      "id": "rag-vector-search",
+      "file": "src/rag.ts",
+      "content": [
+        "const searchTool = { name: 'search_docs', execute: ({ query }) => vectorStore.similaritySearch(query, 5) };"
+      ],
+      "expected": {
+        "models": 0,
+        "agents": 0,
+        "tools": 1,
+        "highRiskPaths": 0
+      }
+    }
+  ]
+}

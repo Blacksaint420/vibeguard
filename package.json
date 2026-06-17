@@ -33,7 +33,16 @@
     "README.md",
     "SECURITY.md",
     "CHANGELOG.md",
-    "docs",
+    "docs/agent-capability-graph.md",
+    "docs/ai-bom.md",
+    "docs/ci.md",
+    "docs/configuration.md",
+    "docs/dependency-security.md",
+    "docs/enterprise-readiness.md",
+    "docs/getting-started.md",
+    "docs/pre-commit.md",
+    "docs/rules.md",
+    "docs/security-model.md",
     "schemas",
     "action.yml",
     "vibeguard.yml.example"
@@ -45,6 +54,7 @@
     "packages/output"
   ],
   "scripts": {
+    "benchmark:aibom": "node scripts/benchmark-aibom.mjs",
     "build": "node --no-warnings scripts/build.mjs",
     "prepack": "npm run build",
     "test": "node --test tests/*.test.ts",
