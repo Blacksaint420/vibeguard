@@ -256,7 +256,7 @@ function capabilitiesFromText(source: string): AiCapability[] {
   if (/\b(shell|run_shell|exec|spawn|terminal|command)\b/i.test(source)) capabilities.add("shell");
   if (/\b(fs\.|readFile|writeFile|filesystem|file_path|path)\b/i.test(source)) capabilities.add("filesystem");
   if (/\b(fetch|axios|http|https|request|url)\b/i.test(source)) capabilities.add("network");
-  if (/\b(prisma|sequelize|mongoose|sql|db\.|database|query)\b/i.test(source)) capabilities.add("database");
+  if (/\b(prisma|sequelize|mongoose|sql|db\.|database|(?:pool|client)\.query)\b/i.test(source)) capabilities.add("database");
   if (/\b(vector|embedding|retriever|similaritySearch)\b/i.test(source)) capabilities.add("vector-search");
   if (/\b(apiKey|secret|token|process\.env)\b/i.test(source)) capabilities.add("secret-access");
   return [...capabilities].sort();

@@ -63,3 +63,48 @@ export type AiBomOptions = {
   targetPath: string;
   generatedAt?: string;
 };
+
+export type AgentGraphNodeKind = AiAssetKind | "capability";
+
+export type AgentGraphNode = {
+  id: string;
+  kind: AgentGraphNodeKind;
+  label: string;
+  file?: string;
+  line?: number;
+};
+
+export type AgentGraphEdge = {
+  from: string;
+  to: string;
+  relation: "uses" | "calls" | "exposes" | "retrieves" | "connects";
+  capability?: AiCapability;
+};
+
+export type AgentGraphRisk = {
+  ruleId: string;
+  title: string;
+  severity: "low" | "medium" | "high" | "critical";
+  agentId?: string;
+  assetId: string;
+  capability: AiCapability;
+  path: string[];
+  evidence: string;
+  suggestedFix: string;
+};
+
+export type AgentCapabilityGraph = {
+  tool: "vibeguard";
+  schemaVersion: "vibeguard.agentGraph.v1";
+  generatedAt: string;
+  targetPath: string;
+  summary: {
+    agents: number;
+    tools: number;
+    capabilities: number;
+    highRiskPaths: number;
+  };
+  nodes: AgentGraphNode[];
+  edges: AgentGraphEdge[];
+  risks: AgentGraphRisk[];
+};
