@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/OWNER/vibeguard/schemas/vibeguard-agent-graph.schema.json",
+  "title": "VibeGuard Agent Capability Graph",
+  "type": "object",
+  "required": ["tool", "schemaVersion", "generatedAt", "targetPath", "summary", "nodes", "edges", "risks"],
+  "properties": {
+    "tool": { "const": "vibeguard" },
+    "schemaVersion": { "const": "vibeguard.agentGraph.v1" },
+    "generatedAt": { "type": "string" },
+    "targetPath": { "type": "string" },
+    "summary": { "type": "object", "additionalProperties": true },
+    "nodes": { "type": "array" },
+    "edges": { "type": "array" },
+    "risks": { "type": "array" }
+  },
+  "additionalProperties": true
+}

@@ -33,6 +33,8 @@ vibeguard check --output vibeguard-report.json
 vibeguard check --baseline vibeguard-baseline.json
 vibeguard check --quiet --max-findings 20 --min-confidence high
 vibeguard check --vuln-provider osv
+vibeguard aibom --format aibom-json --output vibeguard-aibom.json
+vibeguard graph --format graph-json --output vibeguard-agent-graph.json
 vibeguard baseline "/Users/you/Projects/CV Maker"
 vibeguard report "/Users/you/Projects/CV Maker" --format html --output vibeguard-report.html
 vibeguard suppress js-eval --file src/app.js --reason "Accepted generated sandbox"
@@ -63,6 +65,12 @@ Default reports use `minConfidence: high` and only include findings with direct 
 VibeGuard does not call a remote service in this version.
 
 Optional dependency vulnerability lookup is off by default. LLM03 supply-chain findings require a vulnerable package/version match from a provider such as OSV. `--vuln-provider osv` sends package names and versions to OSV, but never uploads source code.
+
+Enterprise AI inventory and graphing:
+
+- [`docs/ai-bom.md`](./docs/ai-bom.md)
+- [`docs/agent-capability-graph.md`](./docs/agent-capability-graph.md)
+- [`docs/enterprise-readiness.md`](./docs/enterprise-readiness.md)
 
 ## Reports
 

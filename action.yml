@@ -1,0 +1,30 @@
+name: VibeGuard
+description: Local-first AI application security scanner with AI BOM and agent capability graph outputs.
+author: VibeGuard maintainers
+
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  path:
+    description: Repository path to scan.
+    required: false
+    default: "."
+  version:
+    description: npm package version or dist tag.
+    required: false
+    default: "latest"
+
+runs:
+  using: composite
+  steps:
+    - name: Generate AI BOM
+      shell: bash
+      run: npx --yes "vibeguard@${{ inputs.version }}" aibom "${{ inputs.path }}" --format aibom-json --output vibeguard-aibom.json
+    - name: Generate Agent Graph
+      shell: bash
+      run: npx --yes "vibeguard@${{ inputs.version }}" graph "${{ inputs.path }}" --format graph-json --output vibeguard-agent-graph.json
+    - name: Run VibeGuard SARIF scan
+      shell: bash
+      run: npx --yes "vibeguard@${{ inputs.version }}" check "${{ inputs.path }}" --format sarif --output vibeguard.sarif

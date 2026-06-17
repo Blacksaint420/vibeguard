@@ -4,13 +4,38 @@
   "description": "Local-first CLI safety checks for AI-assisted code changes.",
   "type": "module",
   "private": false,
+  "license": "Apache-2.0",
+  "author": "VibeGuard maintainers",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OWNER/vibeguard.git"
+  },
+  "homepage": "https://github.com/OWNER/vibeguard#readme",
+  "bugs": {
+    "url": "https://github.com/OWNER/vibeguard/issues"
+  },
+  "keywords": [
+    "ai-security",
+    "aibom",
+    "agent-security",
+    "llm-security",
+    "appsec",
+    "sast",
+    "sarif",
+    "owasp-llm",
+    "cli"
+  ],
   "bin": {
     "vibeguard": "./dist/packages/cli/src/index.js"
   },
   "files": [
     "dist",
     "README.md",
+    "SECURITY.md",
+    "CHANGELOG.md",
     "docs",
+    "schemas",
+    "action.yml",
     "vibeguard.yml.example"
   ],
   "workspaces": [
@@ -28,5 +53,9 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   }
 }

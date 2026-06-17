@@ -1,0 +1,44 @@
+name: VibeGuard Code Scanning
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  actions: read
+  security-events: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24.x"
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Generate AI BOM
+        run: node dist/packages/cli/src/index.js aibom --format aibom-json --output vibeguard-aibom.json
+      - name: Generate Agent Graph
+        run: node dist/packages/cli/src/index.js graph --format graph-json --output vibeguard-agent-graph.json
+      - name: Run VibeGuard
+        id: vibeguard
+        shell: bash
+        run: |
+          set +e
+          node dist/packages/cli/src/index.js check --format sarif --output vibeguard.sarif
+          status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+      - uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: vibeguard.sarif
+          category: vibeguard
+      - name: Fail on blocking findings
+        if: steps.vibeguard.outputs.status == '1'
+        run: exit 1

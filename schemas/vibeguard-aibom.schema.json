@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/OWNER/vibeguard/schemas/vibeguard-aibom.schema.json",
+  "title": "VibeGuard AI Bill of Materials",
+  "type": "object",
+  "required": ["tool", "schemaVersion", "generatedAt", "targetPath", "summary"],
+  "properties": {
+    "tool": { "const": "vibeguard" },
+    "schemaVersion": { "const": "vibeguard.aibom.v1" },
+    "generatedAt": { "type": "string" },
+    "targetPath": { "type": "string" },
+    "summary": { "type": "object", "additionalProperties": true },
+    "providers": { "type": "array" },
+    "models": { "type": "array" },
+    "prompts": { "type": "array" },
+    "agents": { "type": "array" },
+    "tools": { "type": "array" },
+    "vectorStores": { "type": "array" },
+    "mcpServers": { "type": "array" },
+    "dataStores": { "type": "array" }
+  },
+  "additionalProperties": true
+}

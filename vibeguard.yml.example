@@ -28,3 +28,7 @@ aiPrompts:
   enabled: true
 suppressions: []
 minConfidence: high
+
+# Enterprise AI inventory commands:
+#   vibeguard aibom --format aibom-json --output vibeguard-aibom.json
+#   vibeguard graph --format graph-json --output vibeguard-agent-graph.json
