@@ -1,10 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { buildAiBom, buildAgentCapabilityGraph } from "../packages/core/src/aibom/index.ts";
 import { applyPolicy, defaultPolicy, loadPolicyFromText } from "../packages/core/src/policy.ts";
 import { runCheckFromDiff } from "../packages/core/src/engine.ts";
 import { createFindingId } from "../packages/core/src/types.ts";
-import { renderFindings, renderJson, renderMarkdown, renderRiskJson, renderSarif, renderTable } from "../packages/output/src/formatters.ts";
+import { renderAgentGraphJson, renderAiBomJson, renderFindings, renderJson, renderMarkdown, renderRiskJson, renderSarif, renderTable } from "../packages/output/src/formatters.ts";
 
 function finding(overrides = {}) {
   const base = {
@@ -361,4 +362,42 @@ test("runCheck includes medium-confidence RAG findings in audit mode", async () 
 
   assert.equal(defaultReport.findings.some((finding) => finding.ruleId === "ai-rag-query-without-filter"), false);
   assert.equal(auditReport.findings.some((finding) => finding.ruleId === "ai-rag-query-without-filter"), true);
+});
+
+test("AI BOM JSON renderer emits enterprise schema version", () => {
+  const bom = buildAiBom([{
+    path: "src/agent.ts",
+    oldPath: "src/agent.ts",
+    status: "modified",
+    addedLines: [{ line: 1, content: "const response = await openai.chat.completions.create({ model: 'gpt-4.1', messages });" }],
+    removedLines: [],
+    allLines: [{ line: 1, content: "const response = await openai.chat.completions.create({ model: 'gpt-4.1', messages });" }]
+  }], { targetPath: "/repo", generatedAt: "2026-06-17T00:00:00.000Z" });
+
+  const output = JSON.parse(renderAiBomJson(bom));
+
+  assert.equal(output.schemaVersion, "vibeguard.aibom.v1");
+  assert.equal(output.summary.models, 1);
+});
+
+test("agent graph JSON renderer emits high-risk path summary", () => {
+  const bom = buildAiBom([{
+    path: "src/agent.ts",
+    oldPath: "src/agent.ts",
+    status: "modified",
+    addedLines: [
+      { line: 1, content: "export const agent = createAgent({ name: 'support-agent', tools: [shellTool] });" },
+      { line: 2, content: "const shellTool = { name: 'run_shell', execute: ({ command }) => exec(command) };" }
+    ],
+    removedLines: [],
+    allLines: [
+      { line: 1, content: "export const agent = createAgent({ name: 'support-agent', tools: [shellTool] });" },
+      { line: 2, content: "const shellTool = { name: 'run_shell', execute: ({ command }) => exec(command) };" }
+    ]
+  }], { targetPath: "/repo", generatedAt: "2026-06-17T00:00:00.000Z" });
+
+  const output = JSON.parse(renderAgentGraphJson(buildAgentCapabilityGraph(bom)));
+
+  assert.equal(output.schemaVersion, "vibeguard.agentGraph.v1");
+  assert.equal(output.summary.highRiskPaths, 1);
 });

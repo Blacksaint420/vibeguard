@@ -1,9 +1,13 @@
 import { severityRank } from "../../core/src/types.ts";
 import { summarizeOwaspFindings } from "../../core/src/owasp.ts";
 import { summarizeGrcRisks, UNMAPPED_GRC_RISK_CATEGORY } from "../../core/src/risk.ts";
+import type { AgentCapabilityGraph, AiBom } from "../../core/src/aibom/index.ts";
 import type { CheckResult, Finding, ReportRecommendation } from "../../core/src/types.ts";
 
-type ReportLike = Finding[] | CheckResult;
+type ScanReportLike = Finding[] | CheckResult;
+type AiBomReportLike = { kind: "aibom"; bom: AiBom };
+type AgentGraphReportLike = { kind: "graph"; graph: AgentCapabilityGraph };
+type ReportLike = ScanReportLike | AiBomReportLike | AgentGraphReportLike;
 
 type GrcRiskEntry = {
   category: string;
@@ -28,7 +32,7 @@ type GrcRiskEntry = {
   }>;
 };
 
-export function renderJson(reportLike: ReportLike): string {
+export function renderJson(reportLike: ScanReportLike): string {
   const report = normalizeReport(reportLike);
   return JSON.stringify(
     {
@@ -45,7 +49,7 @@ export function renderJson(reportLike: ReportLike): string {
   );
 }
 
-export function renderRiskJson(reportLike: ReportLike): string {
+export function renderRiskJson(reportLike: ScanReportLike): string {
   const report = normalizeReport(reportLike);
   return JSON.stringify(
     {
@@ -61,7 +65,7 @@ export function renderRiskJson(reportLike: ReportLike): string {
   );
 }
 
-export function renderTable(reportLike: ReportLike): string {
+export function renderTable(reportLike: ScanReportLike): string {
   const report = normalizeReport(reportLike);
   const findings = report.findings;
   if (findings.length === 0) {
@@ -101,7 +105,7 @@ export function renderTable(reportLike: ReportLike): string {
   ].join("\n");
 }
 
-export function renderMarkdown(reportLike: ReportLike): string {
+export function renderMarkdown(reportLike: ScanReportLike): string {
   const report = normalizeReport(reportLike);
   const findings = report.findings;
   const bySeverity = groupBy(findings, "severity");
@@ -178,7 +182,7 @@ export function renderMarkdown(reportLike: ReportLike): string {
   return lines.join("\n");
 }
 
-export function renderSarif(reportLike: ReportLike): string {
+export function renderSarif(reportLike: ScanReportLike): string {
   const report = normalizeReport(reportLike);
   const findings = report.findings;
   const rules = [...new Map(findings.map((finding) => [
@@ -257,7 +261,7 @@ export function renderSarif(reportLike: ReportLike): string {
   );
 }
 
-export function renderHtml(reportLike: ReportLike): string {
+export function renderHtml(reportLike: ScanReportLike): string {
   const report = normalizeReport(reportLike);
   const recommendations = buildRecommendations(report);
   const owaspSummary = summarizeOwaspFindings(report.findings);
@@ -330,12 +334,91 @@ export function renderHtml(reportLike: ReportLike): string {
 }
 
 export function renderFindings(reportLike: ReportLike, format = "table"): string {
+  if (isAiBomReport(reportLike)) {
+    return format === "aibom-markdown" ? renderAiBomMarkdown(reportLike.bom) : renderAiBomJson(reportLike.bom);
+  }
+  if (isAgentGraphReport(reportLike)) {
+    return format === "graph-markdown" ? renderAgentGraphMarkdown(reportLike.graph) : renderAgentGraphJson(reportLike.graph);
+  }
   if (format === "json") return renderJson(reportLike);
   if (format === "risk-json") return renderRiskJson(reportLike);
   if (format === "sarif") return renderSarif(reportLike);
   if (format === "markdown") return renderMarkdown(reportLike);
   if (format === "html") return renderHtml(reportLike);
   return renderTable(reportLike);
+}
+
+export function renderAiBomJson(bom: AiBom): string {
+  return JSON.stringify(bom, null, 2);
+}
+
+export function renderAiBomMarkdown(bom: AiBom): string {
+  return [
+    "## VibeGuard AI Bill of Materials",
+    "",
+    `- Providers: ${bom.summary.providers}`,
+    `- Models: ${bom.summary.models}`,
+    `- Prompts: ${bom.summary.prompts}`,
+    `- Agents: ${bom.summary.agents}`,
+    `- Tools: ${bom.summary.tools}`,
+    `- Vector stores: ${bom.summary.vectorStores}`,
+    `- MCP servers: ${bom.summary.mcpServers}`,
+    `- High-risk capabilities: ${bom.summary.highRiskCapabilities.join(", ") || "none"}`,
+    "",
+    "### Assets",
+    "",
+    ...allBomAssets(bom).map((asset) =>
+      `- ${asset.kind}: ${asset.name} (${asset.file}:${asset.line}) capabilities=${asset.capabilities.join(",") || "none"}`
+    ),
+    ""
+  ].join("\n");
+}
+
+export function renderAgentGraphJson(graph: AgentCapabilityGraph): string {
+  return JSON.stringify(graph, null, 2);
+}
+
+export function renderAgentGraphMarkdown(graph: AgentCapabilityGraph): string {
+  return [
+    "## VibeGuard Agent Capability Graph",
+    "",
+    `- Agents: ${graph.summary.agents}`,
+    `- Tools: ${graph.summary.tools}`,
+    `- Capabilities: ${graph.summary.capabilities}`,
+    `- High-risk paths: ${graph.summary.highRiskPaths}`,
+    "",
+    "### High-Risk Paths",
+    "",
+    ...(graph.risks.length === 0
+      ? ["- None"]
+      : graph.risks.map((risk) => `- ${risk.severity}: ${risk.title}. ${risk.evidence} Fix: ${risk.suggestedFix}`)),
+    "",
+    "### Edges",
+    "",
+    ...graph.edges.map((edge) => `- ${edge.from} ${edge.relation} ${edge.to}${edge.capability ? ` (${edge.capability})` : ""}`),
+    ""
+  ].join("\n");
+}
+
+function isAiBomReport(value: ReportLike): value is AiBomReportLike {
+  return !Array.isArray(value) && "kind" in value && value.kind === "aibom";
+}
+
+function isAgentGraphReport(value: ReportLike): value is AgentGraphReportLike {
+  return !Array.isArray(value) && "kind" in value && value.kind === "graph";
+}
+
+function allBomAssets(bom: AiBom): AiBom["providers"] {
+  return [
+    ...bom.providers,
+    ...bom.models,
+    ...bom.prompts,
+    ...bom.agents,
+    ...bom.tools,
+    ...bom.vectorStores,
+    ...bom.mcpServers,
+    ...bom.dataStores
+  ];
 }
 
 function buildGrcRisks(findings: Finding[]): GrcRiskEntry[] {
@@ -393,7 +476,7 @@ function uniqueFrameworks(findings: Finding[]): NonNullable<Finding["frameworks"
   );
 }
 
-export function buildRecommendations(reportLike: ReportLike, limit = 5): ReportRecommendation[] {
+export function buildRecommendations(reportLike: ScanReportLike, limit = 5): ReportRecommendation[] {
   const report = normalizeReport(reportLike);
   return [...report.findings]
     .sort((left, right) =>
@@ -448,7 +531,7 @@ function escapeMarkdown(value: string): string {
   return value.replace(/\|/g, "\\|").replace(/\n/g, " ");
 }
 
-function normalizeReport(reportLike: ReportLike): CheckResult {
+function normalizeReport(reportLike: ScanReportLike): CheckResult {
   if (Array.isArray(reportLike)) {
     return {
       findings: reportLike,

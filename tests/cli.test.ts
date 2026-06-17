@@ -30,6 +30,18 @@ test("parseArgs supports risk-json output format", () => {
   assert.equal(command.format, "risk-json");
 });
 
+test("parseArgs supports aibom and graph commands", () => {
+  const aibom = parseArgs(["aibom", "src", "--format", "aibom-json", "--output", "bom.json"]);
+  const graph = parseArgs(["graph", "--format", "graph-json", "--output", "graph.json"]);
+
+  assert.equal(aibom.name, "aibom");
+  assert.equal(aibom.targetPath, "src");
+  assert.equal(aibom.format, "aibom-json");
+  assert.equal(aibom.output, "bom.json");
+  assert.equal(graph.name, "graph");
+  assert.equal(graph.format, "graph-json");
+});
+
 test("parseArgs supports repository path for full scan", () => {
   const command = parseArgs(["check", "/tmp/CV Maker", "--format", "json"]);
 
@@ -220,6 +232,32 @@ test("runCli defaults to full repository scan without diff collection", async ()
   assert.equal(diffCalled, false);
   assert.equal(result.exitCode, 1);
   assert.equal(report.findings[0].ruleId, "js-eval");
+});
+
+test("runCli renders AI BOM JSON", async () => {
+  const writes: string[] = [];
+  const result = await runCli(["aibom", "--format", "aibom-json"], {
+    cwd: process.cwd(),
+    collectRepositoryFiles: () => [{
+      path: "src/agent.ts",
+      oldPath: "src/agent.ts",
+      status: "modified",
+      addedLines: [
+        { line: 1, content: "const response = await openai.chat.completions.create({ model: 'gpt-4.1', messages });" }
+      ],
+      removedLines: [],
+      allLines: [
+        { line: 1, content: "const response = await openai.chat.completions.create({ model: 'gpt-4.1', messages });" }
+      ]
+    }],
+    stdout: (text) => writes.push(text),
+    stderr: () => {}
+  });
+
+  const output = JSON.parse(writes.join(""));
+  assert.equal(result.exitCode, 0);
+  assert.equal(output.schemaVersion, "vibeguard.aibom.v1");
+  assert.equal(output.summary.models, 1);
 });
 
 test("runCli explain returns rule details", async () => {

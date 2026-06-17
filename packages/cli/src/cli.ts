@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { baselineFindingIds, createBaseline, DEFAULT_BASELINE_PATH, loadBaseline, serializeBaseline } from "../../core/src/baseline.ts";
+import { buildAiBom, buildAgentCapabilityGraph } from "../../core/src/aibom/index.ts";
 import { collectGitDiff } from "../../core/src/diff.ts";
 import { explainRule } from "../../core/src/explain.ts";
 import { runCheck } from "../../core/src/engine.ts";
@@ -22,6 +23,8 @@ export type ParsedCommand =
   | ({ name: "check" } & ScanCommandOptions)
   | ({ name: "report" } & ScanCommandOptions)
   | ({ name: "baseline"; output: string } & ScanCommandOptions)
+  | ({ name: "aibom" } & InventoryCommandOptions)
+  | ({ name: "graph" } & InventoryCommandOptions)
   | { name: "suppress"; id: string; file?: string; line?: number; reason?: string; reviewer?: string; expires?: string; config?: string }
   | { name: "help" };
 
@@ -37,6 +40,12 @@ type ScanCommandOptions = {
   maxFindings?: number;
   minConfidence?: Confidence;
   vulnProvider: "null" | "mock" | "osv";
+};
+
+type InventoryCommandOptions = {
+  targetPath?: string;
+  format: OutputFormat;
+  output?: string;
 };
 
 export type CliEnvironment = {
@@ -72,6 +81,12 @@ export function parseArgs(argv: string[]): ParsedCommand {
     const options = parseScanOptions(rest, "baseline", "json");
     if (options.baseline) throw new Error("baseline cannot be combined with --baseline");
     return { name: "baseline", ...options, output: options.output ?? DEFAULT_BASELINE_PATH };
+  }
+  if (command === "aibom") {
+    return { name: "aibom", ...parseInventoryOptions(rest, "aibom", "aibom-json") };
+  }
+  if (command === "graph") {
+    return { name: "graph", ...parseInventoryOptions(rest, "graph", "graph-json") };
   }
   if (command === "suppress") {
     const id = rest[0];
@@ -164,6 +179,24 @@ export async function runCli(argv: string[], environment: CliEnvironment = {}): 
       return { exitCode: 0 };
     }
 
+    if (command.name === "aibom" || command.name === "graph") {
+      const targetPath = command.targetPath ? resolve(cwd, command.targetPath) : cwd;
+      const repositoryFiles = environment.collectRepositoryFiles
+        ? environment.collectRepositoryFiles(targetPath)
+        : collectRepositoryFiles(targetPath);
+      const bom = buildAiBom(repositoryFiles, { targetPath });
+      const rendered = command.name === "aibom"
+        ? renderFindings({ kind: "aibom", bom } as never, command.format)
+        : renderFindings({ kind: "graph", graph: buildAgentCapabilityGraph(bom) } as never, command.format);
+      if (command.output) {
+        const outputPath = writeOutputFile(cwd, command.output, `${rendered}\n`);
+        stdout(`Wrote ${outputPath}\n`);
+      } else {
+        stdout(`${rendered}\n`);
+      }
+      return { exitCode: 0 };
+    }
+
     if (!command.quiet && command.format === "table") {
       stderr(`${command.staged || command.base ? "Scanning git diff" : "Scanning repository"}...\n`);
     }
@@ -216,6 +249,8 @@ function helpText(): string {
     "  vibeguard check [--output report.json]",
     "  vibeguard check [--quiet] [--max-findings <n>] [--min-confidence low|medium|high]",
     "  vibeguard check [--vuln-provider null|mock|osv]",
+    "  vibeguard aibom [path] [--format aibom-json|aibom-markdown] [--output vibeguard-aibom.json]",
+    "  vibeguard graph [path] [--format graph-json|graph-markdown] [--output vibeguard-agent-graph.json]",
     "  vibeguard baseline [path] [--output vibeguard-baseline.json]",
     "  vibeguard report [path] [--format json|sarif|markdown|html|risk-json] [--output report.html]",
     "  vibeguard suppress <finding_id_or_rule_id> [--file <path>] [--line <n>] [--reason <text>] [--reviewer <email>] [--expires <YYYY-MM-DD>]",
@@ -226,7 +261,16 @@ function helpText(): string {
 }
 
 function isOutputFormat(value: string | undefined): value is OutputFormat {
-  return value === "table" || value === "json" || value === "sarif" || value === "markdown" || value === "html" || value === "risk-json";
+  return value === "table" ||
+    value === "json" ||
+    value === "sarif" ||
+    value === "markdown" ||
+    value === "html" ||
+    value === "risk-json" ||
+    value === "aibom-json" ||
+    value === "aibom-markdown" ||
+    value === "graph-json" ||
+    value === "graph-markdown";
 }
 
 async function runDiffCheck(
@@ -303,7 +347,7 @@ function parseScanOptions(rest: string[], commandName: string, defaultFormat: Ou
       index += 1;
     } else if (arg === "--format") {
       const value = rest[index + 1];
-      if (!isOutputFormat(value)) throw new Error("Format must be table, json, sarif, markdown, html, or risk-json");
+      if (!isOutputFormat(value)) throw new Error("Format must be table, json, sarif, markdown, html, risk-json, aibom-json, aibom-markdown, graph-json, or graph-markdown");
       format = value;
       index += 1;
     } else if (arg === "--quiet") {
@@ -341,6 +385,31 @@ function parseScanOptions(rest: string[], commandName: string, defaultFormat: Ou
   }
 
   return { staged, base, targetPath, format, quiet, noColor, output, baseline, maxFindings, minConfidence, vulnProvider };
+}
+
+function parseInventoryOptions(rest: string[], commandName: string, defaultFormat: OutputFormat): InventoryCommandOptions {
+  let targetPath: string | undefined;
+  let format: OutputFormat = defaultFormat;
+  let output: string | undefined;
+
+  for (let index = 0; index < rest.length; index += 1) {
+    const arg = rest[index];
+    if (arg === "--format") {
+      const value = rest[index + 1];
+      if (!isOutputFormat(value)) throw new Error("Format must be table, json, sarif, markdown, html, risk-json, aibom-json, aibom-markdown, graph-json, or graph-markdown");
+      format = value;
+      index += 1;
+    } else if (arg === "--output") {
+      output = requiredValue(rest[index + 1], "--output");
+      index += 1;
+    } else if (!arg.startsWith("-") && !targetPath) {
+      targetPath = arg;
+    } else {
+      throw new Error(`Unknown ${commandName} option: ${arg}`);
+    }
+  }
+
+  return { targetPath, format, output };
 }
 
 function parsePositiveInteger(value: string | undefined, flag: string): number {
