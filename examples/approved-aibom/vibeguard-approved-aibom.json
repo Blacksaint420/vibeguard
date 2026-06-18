@@ -1,0 +1,25 @@
+{
+  "tool": "vibeguard",
+  "schemaVersion": "vibeguard.aibom.v1",
+  "generatedAt": "2026-06-18T00:00:00.000Z",
+  "targetPath": ".",
+  "summary": {
+    "providers": 0,
+    "models": 0,
+    "prompts": 0,
+    "agents": 0,
+    "tools": 0,
+    "vectorStores": 0,
+    "mcpServers": 0,
+    "dataStores": 0,
+    "highRiskCapabilities": []
+  },
+  "providers": [],
+  "models": [],
+  "prompts": [],
+  "agents": [],
+  "tools": [],
+  "vectorStores": [],
+  "mcpServers": [],
+  "dataStores": []
+}

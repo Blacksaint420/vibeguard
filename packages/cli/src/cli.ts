@@ -3,7 +3,7 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 
 import { baselineFindingIds, createBaseline, DEFAULT_BASELINE_PATH, loadBaseline, serializeBaseline } from "../../core/src/baseline.ts";
-import { buildAiBom, buildAgentCapabilityGraph } from "../../core/src/aibom/index.ts";
+import { buildAiBom, buildAgentCapabilityGraph, evaluateAiBomPolicy } from "../../core/src/aibom/index.ts";
 import { collectGitDiff } from "../../core/src/diff.ts";
 import { explainRule } from "../../core/src/explain.ts";
 import { runCheck } from "../../core/src/engine.ts";
@@ -11,10 +11,12 @@ import {
   DEFAULT_POLICY_TEXT,
   isExpiredSuppressionExpiration,
   isValidSuppressionExpiration,
+  loadPolicy,
   loadPolicyFromText
 } from "../../core/src/policy.ts";
 import { collectRepositoryFiles } from "../../core/src/repository.ts";
-import type { Confidence, DiffFile, OutputFormat } from "../../core/src/types.ts";
+import type { AiBomDiffResult, AiGovernanceMode, Confidence, DiffFile, OutputFormat, Policy } from "../../core/src/types.ts";
+import type { AiBom } from "../../core/src/aibom/index.ts";
 import { renderAgentGraphConsole, renderAiBomConsole, renderFindings, renderRiskConsole } from "../../output/src/formatters.ts";
 
 export type ParsedCommand =
@@ -27,6 +29,8 @@ export type ParsedCommand =
   | ({ name: "report" } & ScanCommandOptions)
   | ({ name: "baseline"; output: string } & ScanCommandOptions)
   | ({ name: "aibom" } & InventoryCommandOptions)
+  | ({ name: "aibom-approve" } & InventoryCommandOptions)
+  | ({ name: "aibom-diff" } & AiBomDiffCommandOptions)
   | ({ name: "graph" } & InventoryCommandOptions)
   | { name: "suppress"; id: string; file?: string; line?: number; reason?: string; reviewer?: string; expires?: string; config?: string }
   | { name: "help" };
@@ -49,12 +53,21 @@ type ScanCommandOptions = {
   strictCoverage: boolean;
   maxFiles?: number;
   maxFileBytes?: number;
+  approvedAiBom?: string;
+  aiPolicy?: string;
+  aiGovernanceMode?: AiGovernanceMode;
 };
 
 type InventoryCommandOptions = {
   targetPath?: string;
   format: OutputFormat;
   output?: string;
+};
+
+type AiBomDiffCommandOptions = InventoryCommandOptions & {
+  approvedAiBom?: string;
+  aiPolicy?: string;
+  aiGovernanceMode?: AiGovernanceMode;
 };
 
 export type CliEnvironment = {
@@ -98,6 +111,8 @@ export function parseArgs(argv: string[]): ParsedCommand {
     return { name: "baseline", ...options, output: options.output ?? DEFAULT_BASELINE_PATH };
   }
   if (command === "aibom") {
+    if (rest[0] === "approve") return { name: "aibom-approve", ...parseInventoryOptions(rest.slice(1), "aibom approve", "aibom-json") };
+    if (rest[0] === "diff") return { name: "aibom-diff", ...parseAiBomDiffOptions(rest.slice(1)) };
     return { name: "aibom", ...parseInventoryOptions(rest, "aibom", "table") };
   }
   if (command === "graph") {
@@ -203,22 +218,51 @@ export async function runCli(argv: string[], environment: CliEnvironment = {}): 
       return { exitCode: 0 };
     }
 
-    if (command.name === "aibom" || command.name === "graph") {
+    if (command.name === "aibom" || command.name === "aibom-approve" || command.name === "graph") {
       const targetPath = command.targetPath ? resolve(cwd, command.targetPath) : cwd;
       const repositoryFiles = environment.collectRepositoryFiles
         ? environment.collectRepositoryFiles(targetPath)
         : collectRepositoryFiles(targetPath);
       const bom = buildAiBom(repositoryFiles, { targetPath });
-      const rendered = command.name === "aibom"
-        ? renderFindings({ kind: "aibom", bom } as never, command.format)
-        : renderFindings({ kind: "graph", graph: buildAgentCapabilityGraph(bom) } as never, command.format);
+      const rendered = command.name === "graph"
+        ? renderFindings({ kind: "graph", graph: buildAgentCapabilityGraph(bom) } as never, command.format)
+        : renderFindings({ kind: "aibom", bom } as never, command.format);
+      if (command.name === "aibom-approve" && !command.output) {
+        stdout(`${renderFindings({ kind: "aibom", bom } as never, "aibom-json")}\n`);
+        return { exitCode: 0 };
+      }
+      if (command.output) {
+        const outputPath = writeOutputFile(cwd, command.output, `${command.name === "aibom-approve" ? renderFindings({ kind: "aibom", bom } as never, "aibom-json") : rendered}\n`);
+        stdout(`Wrote ${outputPath}\n`);
+      } else {
+        stdout(`${rendered}\n`);
+      }
+      return { exitCode: 0 };
+    }
+
+    if (command.name === "aibom-diff") {
+      const targetPath = command.targetPath ? resolve(cwd, command.targetPath) : cwd;
+      const repositoryFiles = environment.collectRepositoryFiles
+        ? environment.collectRepositoryFiles(targetPath)
+        : collectRepositoryFiles(targetPath);
+      const bom = buildAiBom(repositoryFiles, { targetPath });
+      const policy = loadCommandPolicy(command, cwd);
+      const approvedBom = loadApprovedBomForCommand(command, policy, cwd);
+      const diff = evaluateAiBomPolicy({
+        currentBom: bom,
+        approvedBom,
+        policy: command.aiGovernanceMode
+          ? { ...policy.aiGovernance, mode: command.aiGovernanceMode }
+          : policy.aiGovernance
+      });
+      const rendered = renderFindings({ kind: "aibom-diff", diff } as never, command.format);
       if (command.output) {
         const outputPath = writeOutputFile(cwd, command.output, `${rendered}\n`);
         stdout(`Wrote ${outputPath}\n`);
       } else {
         stdout(`${rendered}\n`);
       }
-      return { exitCode: 0 };
+      return { exitCode: diff.summary.blocking > 0 ? 1 : 0 };
     }
 
     if (!command.quiet && command.format === "table") {
@@ -376,7 +420,10 @@ function helpText(): string {
     "  vibeguard check [--output report.json]",
     "  vibeguard check [--quiet] [--max-findings <n>] [--min-confidence low|medium|high]",
     "  vibeguard check [--vuln-provider null|mock|osv]",
+    "  vibeguard check [--approved-aibom <path>] [--ai-policy <path>] [--ai-governance-mode audit|block]",
     "  vibeguard aibom [path] [--format table|aibom-json|aibom-markdown] [--output vibeguard-aibom.json]",
+    "  vibeguard aibom approve [path] --output .vibeguard/approved-aibom.json",
+    "  vibeguard aibom diff [path] --approved-aibom .vibeguard/approved-aibom.json [--format table|json|markdown|html|risk-json]",
     "  vibeguard graph [path] [--format table|graph-json|graph-markdown] [--output vibeguard-agent-graph.json]",
     "  vibeguard baseline [path] [--output vibeguard-baseline.json]",
     "  vibeguard report [path] [--format json|sarif|markdown|html|risk-json] [--output report.html]",
@@ -702,11 +749,16 @@ function isOutputFormat(value: string | undefined): value is OutputFormat {
     value === "graph-markdown";
 }
 
+function isAiBomDiffFormat(value: string | undefined): value is OutputFormat {
+  return value === "table" || value === "json" || value === "markdown" || value === "html" || value === "risk-json";
+}
+
 async function runDiffCheck(
   command: ScanCommandOptions,
   environment: CliEnvironment,
   cwd: string
 ) {
+  const policy = loadCommandPolicy(command, cwd);
   const diffText = environment.collectDiff
     ? environment.collectDiff({ cwd, staged: command.staged, base: command.base })
     : collectGitDiff({ cwd, staged: command.staged, base: command.base });
@@ -719,6 +771,9 @@ async function runDiffCheck(
     maxFindings: command.maxFindings,
     minConfidence: command.minConfidence,
     baselineFindingIds: loadBaselineIds(cwd, command.baseline),
+    policy,
+    approvedAiBom: loadApprovedBomForCommand(command, policy, cwd),
+    aiGovernanceMode: command.aiGovernanceMode,
     vulnProvider: command.vulnProvider,
     vulnProviderFailMode: command.vulnProviderFailMode,
     vulnProviderTimeoutMs: command.vulnProviderTimeoutMs,
@@ -733,6 +788,7 @@ async function runRepositoryCheck(
   environment: CliEnvironment,
   cwd: string
 ) {
+  const policy = loadCommandPolicy(command, cwd);
   const targetPath = command.targetPath ? resolve(cwd, command.targetPath) : cwd;
   const repositoryFiles = environment.collectRepositoryFiles ? environment.collectRepositoryFiles(targetPath) : undefined;
   return runCheck({
@@ -743,6 +799,9 @@ async function runRepositoryCheck(
     maxFindings: command.maxFindings,
     minConfidence: command.minConfidence,
     baselineFindingIds: loadBaselineIds(cwd, command.baseline),
+    policy,
+    approvedAiBom: loadApprovedBomForCommand(command, policy, cwd),
+    aiGovernanceMode: command.aiGovernanceMode,
     vulnProvider: command.vulnProvider,
     vulnProviderFailMode: command.vulnProviderFailMode,
     vulnProviderTimeoutMs: command.vulnProviderTimeoutMs,
@@ -798,6 +857,9 @@ function parseScanOptions(rest: string[], commandName: string, defaultFormat: Ou
   let strictCoverage = false;
   let maxFiles: number | undefined;
   let maxFileBytes: number | undefined;
+  let approvedAiBom: string | undefined;
+  let aiPolicy: string | undefined;
+  let aiGovernanceMode: AiGovernanceMode | undefined;
 
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
@@ -853,6 +915,17 @@ function parseScanOptions(rest: string[], commandName: string, defaultFormat: Ou
     } else if (arg === "--max-file-bytes") {
       maxFileBytes = parsePositiveInteger(rest[index + 1], "--max-file-bytes");
       index += 1;
+    } else if (arg === "--approved-aibom") {
+      approvedAiBom = requiredValue(rest[index + 1], "--approved-aibom");
+      index += 1;
+    } else if (arg === "--ai-policy") {
+      aiPolicy = requiredValue(rest[index + 1], "--ai-policy");
+      index += 1;
+    } else if (arg === "--ai-governance-mode") {
+      const value = rest[index + 1];
+      if (!isAiGovernanceMode(value)) throw new Error("AI governance mode must be audit or block");
+      aiGovernanceMode = value;
+      index += 1;
     } else if (!arg.startsWith("-") && !targetPath) {
       targetPath = arg;
     } else {
@@ -881,8 +954,50 @@ function parseScanOptions(rest: string[], commandName: string, defaultFormat: Ou
     vulnProviderConcurrency,
     strictCoverage,
     maxFiles,
-    maxFileBytes
+    maxFileBytes,
+    approvedAiBom,
+    aiPolicy,
+    aiGovernanceMode
   };
+}
+
+function parseAiBomDiffOptions(rest: string[]): AiBomDiffCommandOptions {
+  let targetPath: string | undefined;
+  let format: OutputFormat = "table";
+  let output: string | undefined;
+  let approvedAiBom: string | undefined;
+  let aiPolicy: string | undefined;
+  let aiGovernanceMode: AiGovernanceMode | undefined;
+
+  for (let index = 0; index < rest.length; index += 1) {
+    const arg = rest[index];
+    if (arg === "--format") {
+      const value = rest[index + 1];
+      if (!isAiBomDiffFormat(value)) throw new Error("AI BOM diff format must be table, json, markdown, html, or risk-json");
+      format = value;
+      index += 1;
+    } else if (arg === "--output") {
+      output = requiredValue(rest[index + 1], "--output");
+      index += 1;
+    } else if (arg === "--approved-aibom") {
+      approvedAiBom = requiredValue(rest[index + 1], "--approved-aibom");
+      index += 1;
+    } else if (arg === "--ai-policy") {
+      aiPolicy = requiredValue(rest[index + 1], "--ai-policy");
+      index += 1;
+    } else if (arg === "--ai-governance-mode") {
+      const value = rest[index + 1];
+      if (!isAiGovernanceMode(value)) throw new Error("AI governance mode must be audit or block");
+      aiGovernanceMode = value;
+      index += 1;
+    } else if (!arg.startsWith("-") && !targetPath) {
+      targetPath = arg;
+    } else {
+      throw new Error(`Unknown aibom diff option: ${arg}`);
+    }
+  }
+
+  return { targetPath, format, output, approvedAiBom, aiPolicy, aiGovernanceMode };
 }
 
 function parseInventoryOptions(rest: string[], commandName: string, defaultFormat: OutputFormat): InventoryCommandOptions {
@@ -929,9 +1044,26 @@ function isVulnProvider(value: string | undefined): value is "null" | "mock" | "
   return value === "null" || value === "mock" || value === "osv";
 }
 
+function isAiGovernanceMode(value: string | undefined): value is AiGovernanceMode {
+  return value === "audit" || value === "block";
+}
+
 function loadBaselineIds(cwd: string, baselinePath: string | undefined): string[] | undefined {
   if (!baselinePath) return undefined;
   return baselineFindingIds(loadBaseline(resolveCwdPath(cwd, baselinePath, "--baseline")));
+}
+
+function loadCommandPolicy(command: { aiPolicy?: string }, cwd: string): Policy {
+  if (command.aiPolicy) {
+    return loadPolicyFromText(readFileSync(resolveCwdPath(cwd, command.aiPolicy, "--ai-policy"), "utf8"));
+  }
+  return loadPolicy(cwd);
+}
+
+function loadApprovedBomForCommand(command: { approvedAiBom?: string }, policy: Policy, cwd: string): AiBom | undefined {
+  const approvedBomPath = command.approvedAiBom ?? policy.aiGovernance.approvedBom;
+  if (!approvedBomPath) return undefined;
+  return JSON.parse(readFileSync(resolveCwdPath(cwd, approvedBomPath, "--approved-aibom"), "utf8")) as AiBom;
 }
 
 function defaultReportPath(format: OutputFormat): string {

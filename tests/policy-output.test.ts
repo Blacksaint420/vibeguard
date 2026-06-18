@@ -28,8 +28,14 @@ function finding(overrides = {}) {
   return { ...base, ...overrides };
 }
 
-test("applyPolicy marks high severity findings as blocking by default", () => {
+test("default policy is audit-only for technical findings", () => {
   const [result] = applyPolicy([finding()], defaultPolicy());
+
+  assert.equal(result.blocking, false);
+});
+
+test("block mode marks high severity findings as blocking", () => {
+  const [result] = applyPolicy([finding()], { ...defaultPolicy(), mode: "block" });
 
   assert.equal(result.blocking, true);
 });
@@ -214,12 +220,12 @@ test("formatters render table, JSON, SARIF, and Markdown", () => {
   const markdown = renderMarkdown(findings);
 
   assert.equal(json.findings[0].ruleId, "js-eval");
-  assert.equal(json.derivedSummary.mergeRecommendation, "Do not merge");
+  assert.equal(json.derivedSummary.mergeRecommendation, "Review before merge");
   assert.equal(sarif.version, "2.1.0");
   assert.equal(sarif.runs[0].results[0].ruleId, "js-eval");
   assert.equal(table.includes("js-eval"), true);
   assert.equal(table.includes("VIBEGUARD / SECURITY SCAN"), true);
-  assert.equal(table.includes("Merge recommendation: Do not merge"), true);
+  assert.equal(table.includes("Merge recommendation: Review before merge"), true);
   assert.equal(table.includes("Priority Action Plan"), true);
   assert.equal(table.includes("Control Gaps"), true);
   assert.equal(table.includes("Finding Evidence"), true);
@@ -309,7 +315,7 @@ test("derived report summary gives decision-ready posture and ownership", () => 
       },
       controlGaps: ["secret management"]
     })
-  ], defaultPolicy());
+  ], { ...defaultPolicy(), mode: "block" });
 
   const summary = buildDerivedReportSummary(findings);
 
@@ -554,4 +560,38 @@ test("risk JSON includes AI BOM and agent graph context from check results", asy
 
   assert.equal(output.aiBom.summary.agents, 1);
   assert.equal(output.agentGraph.summary.highRiskPaths, 1);
+});
+
+test("reports expose AI BOM governance across output formats", async () => {
+  const policy = loadPolicyFromText([
+    "mode: warn",
+    "aiGovernance:",
+    "  mode: block",
+    "  allowedProviders:",
+    "    - openai"
+  ].join("\n"));
+  const report = await runCheck({
+    targetPath: "/repo",
+    policy,
+    repositoryFiles: [{
+      path: "src/ai.ts",
+      oldPath: "src/ai.ts",
+      status: "modified",
+      addedLines: [{ line: 1, content: "const anthropic = new Anthropic();" }],
+      removedLines: [],
+      allLines: [{ line: 1, content: "const anthropic = new Anthropic();" }]
+    }]
+  });
+
+  const json = JSON.parse(renderJson(report));
+  const riskJson = JSON.parse(renderRiskJson(report));
+  const sarif = JSON.parse(renderSarif(report));
+  const markdown = renderMarkdown(report);
+  const html = renderFindings(report, "html");
+
+  assert.equal(json.aiGovernance.summary.unauthorized, 1);
+  assert.equal(riskJson.aiGovernance.summary.blocking, 1);
+  assert.equal(sarif.runs[0].results.some((result: { ruleId: string }) => result.ruleId.startsWith("aibom-policy/")), true);
+  assert.equal(markdown.includes("AI BOM Governance"), true);
+  assert.equal(html.includes("AI BOM Governance"), true);
 });

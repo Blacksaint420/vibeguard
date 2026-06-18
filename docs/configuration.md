@@ -5,7 +5,7 @@
 Default policy:
 
 ```yaml
-mode: block
+mode: warn
 enabledScanners:
   - code
   - secrets
@@ -24,6 +24,9 @@ minConfidence: high
 coverage:
   requireComplete: false
   failOnUnreadable: false
+aiGovernance:
+  mode: audit
+  blockOnDrift: false
 ```
 
 Suppress a finding by rule and file:
@@ -41,6 +44,31 @@ The default policy has no path excludes. Full scans include `.git`, dependency f
 
 The default policy uses `minConfidence: high` so normal reports focus on likely true positives. Use `minConfidence: medium` or `vibeguard check --min-confidence medium` for broader audit mode.
 
+The generated default `mode: warn` is audit-only. Set `mode: block` when technical findings should affect the process exit code.
+
+## AI BOM Governance
+
+AI governance is audit-only by default. It can compare the current AI BOM with an approved BOM and policy allow/block lists:
+
+```yaml
+aiGovernance:
+  mode: audit
+  approvedBom: .vibeguard/approved-aibom.json
+  blockOnDrift: false
+  allowedProviders:
+    - openai
+    - anthropic
+  blockedProviders:
+    - unknown
+  blockedModels:
+    - "*-preview"
+  blockedCapabilities:
+    - shell
+    - secret-access
+```
+
+Use `mode: block` or `--ai-governance-mode block` only when governance findings should affect the process exit code.
+
 Runtime controls can also be passed on the command line:
 
 ```bash
@@ -50,6 +78,9 @@ vibeguard check --strict-coverage
 vibeguard check --max-files 10000
 vibeguard check --max-file-bytes 1048576
 vibeguard check --quiet
+vibeguard check --approved-aibom .vibeguard/approved-aibom.json
+vibeguard check --ai-policy examples/policies/vibeguard-ai-governance.yml
+vibeguard check --ai-governance-mode audit
 ```
 
 ## Coverage

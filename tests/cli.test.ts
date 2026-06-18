@@ -61,6 +61,22 @@ test("parseArgs supports setup guide aliases", () => {
   assert.equal(parseArgs(["configure"]).name, "setup");
 });
 
+test("help includes AI BOM governance commands and flags", async () => {
+  const writes: string[] = [];
+  const result = await runCli(["help"], {
+    stdout: (text) => writes.push(text),
+    stderr: () => {}
+  });
+  const output = writes.join("");
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(output.includes("vibeguard aibom approve"), true);
+  assert.equal(output.includes("vibeguard aibom diff"), true);
+  assert.equal(output.includes("--approved-aibom"), true);
+  assert.equal(output.includes("--ai-policy"), true);
+  assert.equal(output.includes("--ai-governance-mode audit|block"), true);
+});
+
 test("parseArgs supports repository path for full scan", () => {
   const command = parseArgs(["check", "/tmp/CV Maker", "--format", "json"]);
 
@@ -534,6 +550,115 @@ test("runCli creates nested output directories inside the working directory", as
 
   assert.equal(result.exitCode, 0);
   assert.equal(existsSync(join(cwd, "reports", "aibom.json")), true);
+});
+
+test("runCli aibom approve creates an approved BOM file", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "vibeguard-aibom-approve-"));
+  const result = await runCli(["aibom", "approve", "--output", ".vibeguard/approved-aibom.json"], {
+    cwd,
+    collectRepositoryFiles: () => [{
+      path: "src/ai.ts",
+      oldPath: "src/ai.ts",
+      status: "modified",
+      addedLines: [{ line: 1, content: "const response = await openai.chat.completions.create({ model: 'gpt-4.1', messages });" }],
+      removedLines: [],
+      allLines: [{ line: 1, content: "const response = await openai.chat.completions.create({ model: 'gpt-4.1', messages });" }]
+    }],
+    stdout: () => {},
+    stderr: () => {}
+  });
+  const output = JSON.parse(readFileSync(join(cwd, ".vibeguard", "approved-aibom.json"), "utf8"));
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(output.schemaVersion, "vibeguard.aibom.v1");
+  assert.equal(output.summary.models, 1);
+});
+
+test("runCli aibom diff emits governance diff JSON", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "vibeguard-aibom-diff-"));
+  writeFileSync(join(cwd, "approved.json"), JSON.stringify({
+    tool: "vibeguard",
+    schemaVersion: "vibeguard.aibom.v1",
+    generatedAt: "2026-06-18T00:00:00.000Z",
+    targetPath: cwd,
+    summary: {
+      providers: 0,
+      models: 0,
+      prompts: 0,
+      agents: 0,
+      tools: 0,
+      vectorStores: 0,
+      mcpServers: 0,
+      dataStores: 0,
+      highRiskCapabilities: []
+    },
+    providers: [],
+    models: [],
+    prompts: [],
+    agents: [],
+    tools: [],
+    vectorStores: [],
+    mcpServers: [],
+    dataStores: []
+  }));
+  const writes: string[] = [];
+  const result = await runCli(["aibom", "diff", "--approved-aibom", "approved.json", "--format", "json"], {
+    cwd,
+    collectRepositoryFiles: () => [{
+      path: "src/ai.ts",
+      oldPath: "src/ai.ts",
+      status: "modified",
+      addedLines: [{ line: 1, content: "const response = await openai.chat.completions.create({ model: 'gpt-4.1', messages });" }],
+      removedLines: [],
+      allLines: [{ line: 1, content: "const response = await openai.chat.completions.create({ model: 'gpt-4.1', messages });" }]
+    }],
+    stdout: (text) => writes.push(text),
+    stderr: () => {}
+  });
+  const output = JSON.parse(writes.join(""));
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(output.schemaVersion, "vibeguard.aibomDiff.v1");
+  assert.equal(output.summary.added, 2);
+});
+
+test("runCli check keeps AI governance audit-only by default but blocks when requested", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "vibeguard-ai-governance-"));
+  writeFileSync(join(cwd, "vibeguard.yml"), [
+    "mode: warn",
+    "aiGovernance:",
+    "  mode: audit",
+    "  allowedProviders:",
+    "    - openai"
+  ].join("\n"));
+  const repositoryFiles = [{
+    path: "src/ai.ts",
+    oldPath: "src/ai.ts",
+    status: "modified" as const,
+    addedLines: [{ line: 1, content: "const anthropic = new Anthropic();" }],
+    removedLines: [],
+    allLines: [{ line: 1, content: "const anthropic = new Anthropic();" }]
+  }];
+  const auditWrites: string[] = [];
+  const blockWrites: string[] = [];
+
+  const audit = await runCli(["check", "--format", "json", "--quiet"], {
+    cwd,
+    collectRepositoryFiles: () => repositoryFiles,
+    stdout: (text) => auditWrites.push(text),
+    stderr: () => {}
+  });
+  const block = await runCli(["check", "--format", "json", "--quiet", "--ai-governance-mode", "block"], {
+    cwd,
+    collectRepositoryFiles: () => repositoryFiles,
+    stdout: (text) => blockWrites.push(text),
+    stderr: () => {}
+  });
+
+  assert.equal(audit.exitCode, 0);
+  assert.equal(JSON.parse(auditWrites.join("")).aiGovernance.summary.unauthorized, 1);
+  assert.equal(block.exitCode, 1);
+  assert.equal(JSON.parse(blockWrites.join("")).aiGovernance.summary.blocking, 1);
 });
 
 test("runCli still rejects output directories outside the working directory", async () => {

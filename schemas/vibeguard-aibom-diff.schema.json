@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibeguard.dev/schemas/vibeguard-aibom-diff.schema.json",
+  "title": "VibeGuard AI BOM Diff",
+  "type": "object",
+  "required": ["tool", "schemaVersion", "generatedAt", "mode", "currentBom", "summary", "added", "removed", "changed", "violations"],
+  "properties": {
+    "tool": { "const": "vibeguard" },
+    "schemaVersion": { "const": "vibeguard.aibomDiff.v1" },
+    "generatedAt": { "type": "string" },
+    "mode": { "type": "string", "enum": ["audit", "block"] },
+    "approvedBomPath": { "type": "string" },
+    "currentBom": {
+      "type": "object",
+      "required": ["generatedAt", "targetPath"],
+      "properties": {
+        "generatedAt": { "type": "string" },
+        "targetPath": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "summary": {
+      "type": "object",
+      "required": ["added", "removed", "changed", "unauthorized", "blockedCapabilities", "blocking"],
+      "properties": {
+        "added": { "type": "number" },
+        "removed": { "type": "number" },
+        "changed": { "type": "number" },
+        "unauthorized": { "type": "number" },
+        "blockedCapabilities": { "type": "number" },
+        "blocking": { "type": "number" }
+      },
+      "additionalProperties": true
+    },
+    "added": { "type": "array", "items": { "$ref": "#/$defs/delta" } },
+    "removed": { "type": "array", "items": { "$ref": "#/$defs/delta" } },
+    "changed": { "type": "array", "items": { "$ref": "#/$defs/delta" } },
+    "violations": { "type": "array", "items": { "$ref": "#/$defs/violation" } }
+  },
+  "$defs": {
+    "delta": {
+      "type": "object",
+      "required": ["assetId", "kind", "name", "file", "line", "capabilities", "fingerprint", "changes"],
+      "properties": {
+        "assetId": { "type": "string" },
+        "kind": { "type": "string" },
+        "name": { "type": "string" },
+        "file": { "type": "string" },
+        "line": { "type": "number" },
+        "capabilities": { "type": "array", "items": { "type": "string" } },
+        "fingerprint": { "type": "string" },
+        "previousFingerprint": { "type": "string" },
+        "changes": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": true
+    },
+    "violation": {
+      "type": "object",
+      "required": ["id", "ruleId", "title", "severity", "assetId", "assetKind", "assetName", "file", "line", "reason", "driftType", "evidenceStrength", "evidenceSource", "blocking"],
+      "properties": {
+        "id": { "type": "string" },
+        "ruleId": { "type": "string" },
+        "title": { "type": "string" },
+        "severity": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+        "assetId": { "type": "string" },
+        "assetKind": { "type": "string" },
+        "assetName": { "type": "string" },
+        "file": { "type": "string" },
+        "line": { "type": "number" },
+        "reason": { "type": "string" },
+        "driftType": { "type": "string" },
+        "capability": { "type": "string" },
+        "evidenceStrength": { "type": "string" },
+        "evidenceSource": { "type": "string" },
+        "blocking": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

@@ -11,6 +11,7 @@ For full repository CI scans:
 
 ```bash
 vibeguard check --format sarif
+vibeguard check --approved-aibom .vibeguard/approved-aibom.json --ai-governance-mode audit --format sarif
 ```
 
 For an HTML artifact:
@@ -22,6 +23,8 @@ vibeguard check --format html > vibeguard-report.html
 SARIF output is suitable for code-scanning style ingestion. Markdown output is suitable for pull request comments.
 
 This version does not upload source code. OSV vulnerability lookup is opt-in with `--vuln-provider osv`.
+
+AI BOM governance is audit-only unless `--ai-governance-mode block` or policy `aiGovernance.mode: block` is explicitly configured. Start CI adoption with audit mode and review `aiGovernance` in JSON, SARIF, Markdown, HTML, or risk-json output before enabling blocking.
 
 ## GitHub Action
 

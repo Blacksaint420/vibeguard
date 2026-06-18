@@ -24,6 +24,7 @@ export type AiCapability =
 
 export type AiAsset = {
   id: string;
+  fingerprint: string;
   kind: AiAssetKind;
   name: string;
   file: string;

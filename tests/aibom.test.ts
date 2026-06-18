@@ -16,7 +16,7 @@ function file(path: string, lines: string[]): DiffFile {
 }
 
 test("AI BOM extracts providers, models, prompts, tools, agents, vector stores, and MCP servers", () => {
-  const bom = buildAiBom([
+  const files = [
     file("src/agent.ts", [
       "import OpenAI from 'openai';",
       "const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });",
@@ -33,7 +33,9 @@ test("AI BOM extracts providers, models, prompts, tools, agents, vector stores, 
       "  }",
       "}"
     ])
-  ], { targetPath: "/repo" });
+  ];
+  const bom = buildAiBom(files, { targetPath: "/repo" });
+  const repeatedBom = buildAiBom(files, { targetPath: "/another/repo", generatedAt: "2026-06-18T00:00:00.000Z" });
 
   assert.equal(bom.schemaVersion, "vibeguard.aibom.v1");
   assert.equal(bom.summary.providers, 1);
@@ -47,6 +49,20 @@ test("AI BOM extracts providers, models, prompts, tools, agents, vector stores, 
   assert.equal(bom.providers[0].evidenceStrength, "direct");
   assert.equal(bom.providers[0].detectionMethod, "provider-syntax");
   assert.equal(bom.models[0].name, "gpt-4.1");
+  assert.match(bom.models[0].fingerprint, /^[a-f0-9]{16}$/);
+  assert.equal(bom.models[0].fingerprint, repeatedBom.models[0].fingerprint);
+  for (const asset of [
+    ...bom.providers,
+    ...bom.models,
+    ...bom.prompts,
+    ...bom.agents,
+    ...bom.tools,
+    ...bom.mcpServers,
+    ...bom.vectorStores,
+    ...bom.dataStores
+  ]) {
+    assert.match(asset.fingerprint, /^[a-f0-9]{16}$/);
+  }
   assert.equal(bom.agents[0].evidenceSource, "createAgent call");
   assert.equal(bom.tools.find((tool) => tool.name === "searchTool")?.evidenceStrength, "same-file");
   assert.equal(bom.tools.some((tool) => tool.capabilities.includes("shell")), true);

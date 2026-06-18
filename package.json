@@ -38,6 +38,7 @@
     "CHANGELOG.md",
     "docs/agent-capability-graph.md",
     "docs/ai-bom.md",
+    "docs/ai-bom-governance.md",
     "docs/ci.md",
     "docs/configuration.md",
     "docs/dependency-security.md",
@@ -50,6 +51,7 @@
     "docs/security-model.md",
     "schemas",
     "examples/policies",
+    "examples/approved-aibom",
     "action.yml",
     "vibeguard.yml.example"
   ],

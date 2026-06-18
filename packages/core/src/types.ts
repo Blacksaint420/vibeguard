@@ -162,6 +162,97 @@ export type SuppressionPolicy = {
   requireExpiration: boolean;
 };
 
+export type AiGovernanceMode = "audit" | "block";
+
+export type AiGovernanceAssetSelector = {
+  kind?: string;
+  id?: string;
+  name?: string;
+  file?: string;
+  capabilities?: string[];
+};
+
+export type AiGovernanceException = {
+  assetId: string;
+  reason: string;
+  reviewer: string;
+  expires: string;
+};
+
+export type AiGovernancePolicy = {
+  mode: AiGovernanceMode;
+  approvedBom?: string;
+  blockOnDrift: boolean;
+  allowedProviders: string[];
+  blockedProviders: string[];
+  allowedModels: string[];
+  blockedModels: string[];
+  allowedMcpServers: string[];
+  blockedCapabilities: string[];
+  allowedCapabilities: string[];
+  assetAllowlist: AiGovernanceAssetSelector[];
+  exceptions: AiGovernanceException[];
+  changeRisk: {
+    mode: AiGovernanceMode;
+    blockSeverities: Severity[];
+    blockEvents: string[];
+  };
+};
+
+export type AiGovernanceViolation = {
+  id: string;
+  ruleId: string;
+  title: string;
+  severity: Severity;
+  assetId: string;
+  assetKind: string;
+  assetName: string;
+  file: string;
+  line: number;
+  reason: string;
+  driftType: "added" | "removed" | "changed" | "unauthorized" | "blocked-capability";
+  capability?: string;
+  evidenceStrength: EvidenceStrength;
+  evidenceSource: string;
+  blocking: boolean;
+};
+
+export type AiBomAssetDelta = {
+  assetId: string;
+  kind: string;
+  name: string;
+  file: string;
+  line: number;
+  capabilities: string[];
+  fingerprint: string;
+  previousFingerprint?: string;
+  changes: string[];
+};
+
+export type AiBomDiffResult = {
+  tool: "vibeguard";
+  schemaVersion: "vibeguard.aibomDiff.v1";
+  generatedAt: string;
+  mode: AiGovernanceMode;
+  approvedBomPath?: string;
+  currentBom: {
+    generatedAt: string;
+    targetPath: string;
+  };
+  summary: {
+    added: number;
+    removed: number;
+    changed: number;
+    unauthorized: number;
+    blockedCapabilities: number;
+    blocking: number;
+  };
+  added: AiBomAssetDelta[];
+  removed: AiBomAssetDelta[];
+  changed: AiBomAssetDelta[];
+  violations: AiGovernanceViolation[];
+};
+
 export type Policy = {
   mode: "warn" | "block";
   enabledScanners: ScannerName[];
@@ -180,6 +271,7 @@ export type Policy = {
   aiPrompts: {
     enabled: boolean;
   };
+  aiGovernance: AiGovernancePolicy;
 };
 
 export type CheckOptions = {
@@ -201,6 +293,8 @@ export type CheckOptions = {
   maxFiles?: number;
   maxFileBytes?: number;
   policy?: Policy;
+  approvedAiBom?: AiBom;
+  aiGovernanceMode?: AiGovernanceMode;
 };
 
 export type ReportRecommendation = {
@@ -222,6 +316,7 @@ export type CheckResult = {
   files: DiffFile[];
   aiBom?: AiBom;
   agentGraph?: AgentCapabilityGraph;
+  aiGovernance?: AiBomDiffResult;
   summary: {
     filesChanged: number;
     filesScanned: number;

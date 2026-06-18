@@ -3,6 +3,7 @@ import { summarizeOwaspFindings } from "../../core/src/owasp.ts";
 import { summarizeGrcRisks, UNMAPPED_GRC_RISK_CATEGORY } from "../../core/src/risk.ts";
 import type { AgentCapabilityGraph, AiAsset, AiBom } from "../../core/src/aibom/index.ts";
 import type {
+  AiBomDiffResult,
   CheckResult,
   DerivedReportSummary,
   Finding,
@@ -17,8 +18,9 @@ import type {
 
 type ScanReportLike = Finding[] | CheckResult;
 type AiBomReportLike = { kind: "aibom"; bom: AiBom };
+type AiBomDiffReportLike = { kind: "aibom-diff"; diff: AiBomDiffResult };
 type AgentGraphReportLike = { kind: "graph"; graph: AgentCapabilityGraph };
-type ReportLike = ScanReportLike | AiBomReportLike | AgentGraphReportLike;
+type ReportLike = ScanReportLike | AiBomReportLike | AiBomDiffReportLike | AgentGraphReportLike;
 
 type GrcRiskEntry = {
   category: string;
@@ -177,6 +179,7 @@ export function renderJson(reportLike: ScanReportLike): string {
       owaspSummary: summarizeOwaspFindings(report.findings),
       warnings: report.warnings,
       recommendations: buildRecommendations(report),
+      aiGovernance: report.aiGovernance,
       findings: report.findings
     },
     null,
@@ -199,7 +202,8 @@ export function renderRiskJson(reportLike: ScanReportLike): string {
       riskSummary: summarizeGrcRisks(report.findings),
       risks: buildGrcRisks(report.findings),
       aiBom: report.aiBom,
-      agentGraph: report.agentGraph
+      agentGraph: report.agentGraph,
+      aiGovernance: report.aiGovernance
     },
     null,
     2
@@ -343,6 +347,23 @@ export function renderMarkdown(reportLike: ScanReportLike): string {
         const controlGaps = risk.controlGaps.join(", ") || "none";
         return `- ${escapeMarkdown(risk.category)}: ${risk.technicalEvidence.length} finding${risk.technicalEvidence.length === 1 ? "" : "s"}; highest severity ${risk.highestSeverity}; frameworks ${escapeMarkdown(frameworks)}; control gaps ${escapeMarkdown(controlGaps)}`;
       })),
+    "",
+    "### AI BOM Governance",
+    "",
+    ...(report.aiGovernance
+      ? [
+        `- Added: ${report.aiGovernance.summary.added}`,
+        `- Removed: ${report.aiGovernance.summary.removed}`,
+        `- Changed: ${report.aiGovernance.summary.changed}`,
+        `- Unauthorized: ${report.aiGovernance.summary.unauthorized}`,
+        `- Blocked capabilities: ${report.aiGovernance.summary.blockedCapabilities}`,
+        `- Blocking: ${report.aiGovernance.summary.blocking}`,
+        "",
+        ...(report.aiGovernance.violations.length === 0
+          ? ["- No AI BOM governance violations detected."]
+          : report.aiGovernance.violations.map((violation) => `- ${violation.blocking ? "BLOCK" : "AUDIT"} ${violation.severity}: ${escapeMarkdown(violation.assetKind)} ${escapeMarkdown(violation.assetName)} at ${escapeMarkdown(violation.file)}:${violation.line} - ${escapeMarkdown(violation.reason)}`))
+      ]
+      : ["- AI BOM governance was not evaluated."]),
     ""
   ];
 
@@ -383,15 +404,27 @@ export function renderMarkdown(reportLike: ScanReportLike): string {
 export function renderSarif(reportLike: ScanReportLike): string {
   const report = normalizeReport(reportLike);
   const findings = report.findings;
-  const rules = [...new Map(findings.map((finding) => [
-    finding.ruleId,
-    {
-      id: finding.ruleId,
-      shortDescription: { text: finding.title },
-      fullDescription: { text: finding.why },
-      help: { text: finding.suggestedFix }
-    }
-  ])).values()];
+  const governanceViolations = report.aiGovernance?.violations ?? [];
+  const rules = [...new Map([
+    ...findings.map((finding) => [
+      finding.ruleId,
+      {
+        id: finding.ruleId,
+        shortDescription: { text: finding.title },
+        fullDescription: { text: finding.why },
+        help: { text: finding.suggestedFix }
+      }
+    ] as const),
+    ...governanceViolations.map((violation) => [
+      violation.ruleId,
+      {
+        id: violation.ruleId,
+        shortDescription: { text: violation.title },
+        fullDescription: { text: violation.reason },
+        help: { text: "Review AI BOM governance policy, approved BOM, and exception workflow." }
+      }
+    ] as const)
+  ]).values()];
 
   return JSON.stringify(
     {
@@ -424,7 +457,8 @@ export function renderSarif(reportLike: ScanReportLike): string {
               }
             }
           ],
-          results: findings.map((finding) => ({
+          results: [
+            ...findings.map((finding) => ({
             ruleId: finding.ruleId,
             level: sarifLevel(finding.severity),
             message: { text: `${finding.title}: ${finding.why}` },
@@ -450,7 +484,33 @@ export function renderSarif(reportLike: ScanReportLike): string {
               aiFixPrompt: finding.aiFixPrompt,
               testSuggestion: finding.testSuggestion
             }
-          }))
+          })),
+            ...governanceViolations.map((violation) => ({
+              ruleId: violation.ruleId,
+              level: sarifLevel(violation.severity),
+              message: { text: `${violation.title}: ${violation.reason}` },
+              locations: [
+                {
+                  physicalLocation: {
+                    artifactLocation: { uri: violation.file },
+                    region: {
+                      startLine: violation.line
+                    }
+                  }
+                }
+              ],
+              properties: {
+                blocking: violation.blocking,
+                assetId: violation.assetId,
+                assetKind: violation.assetKind,
+                assetName: violation.assetName,
+                driftType: violation.driftType,
+                capability: violation.capability,
+                evidenceStrength: violation.evidenceStrength,
+                evidenceSource: violation.evidenceSource
+              }
+            }))
+          ]
         }
       ]
     },
@@ -517,6 +577,15 @@ export function renderHtml(reportLike: ScanReportLike): string {
     renderOwaspBadges(owaspSummary),
     "<h3>GRC Risk Mapping</h3>",
     renderGrcBadges(grcRisks),
+    "</section>",
+    "<section class=\"panel\">",
+    "<h2>AI BOM Governance</h2>",
+    report.aiGovernance
+      ? `<p>Added: ${report.aiGovernance.summary.added} | Removed: ${report.aiGovernance.summary.removed} | Changed: ${report.aiGovernance.summary.changed} | Unauthorized: ${report.aiGovernance.summary.unauthorized} | Blocked capabilities: ${report.aiGovernance.summary.blockedCapabilities} | Blocking: ${report.aiGovernance.summary.blocking}</p>`
+      : "<p>AI BOM governance was not evaluated.</p>",
+    report.aiGovernance && report.aiGovernance.violations.length > 0
+      ? `<table><thead><tr><th>Status</th><th>Severity</th><th>Asset</th><th>Location</th><th>Reason</th></tr></thead><tbody>${report.aiGovernance.violations.map((violation) => `<tr><td>${violation.blocking ? "BLOCK" : "AUDIT"}</td><td>${escapeHtml(violation.severity)}</td><td>${escapeHtml(`${violation.assetKind}:${violation.assetName}`)}</td><td>${escapeHtml(`${violation.file}:${violation.line}`)}</td><td>${escapeHtml(violation.reason)}</td></tr>`).join("")}</tbody></table>`
+      : "<p>No AI BOM governance violations detected.</p>",
     "</section>",
     "<section class=\"panel\">",
     "<h2>Finding Details</h2>",
@@ -679,6 +748,20 @@ export function renderFindings(reportLike: ReportLike, format = "table"): string
     if (format === "aibom-markdown") return renderAiBomMarkdown(reportLike.bom);
     return renderAiBomConsole(reportLike.bom);
   }
+  if (isAiBomDiffReport(reportLike)) {
+    if (format === "json") return JSON.stringify(reportLike.diff, null, 2);
+    if (format === "risk-json") {
+      return JSON.stringify({
+        tool: "vibeguard",
+        version: "0.1.0",
+        reportType: "aibom-governance-risk",
+        aiGovernance: reportLike.diff
+      }, null, 2);
+    }
+    if (format === "markdown") return renderAiBomDiffMarkdown(reportLike.diff);
+    if (format === "html") return renderAiBomDiffHtml(reportLike.diff);
+    return renderAiBomDiffConsole(reportLike.diff);
+  }
   if (isAgentGraphReport(reportLike)) {
     if (format === "graph-json") return renderAgentGraphJson(reportLike.graph);
     if (format === "graph-markdown") return renderAgentGraphMarkdown(reportLike.graph);
@@ -741,6 +824,76 @@ export function renderAiBomConsole(bom: AiBom): string {
       : []),
     ""
   ].join("\n");
+}
+
+export function renderAiBomDiffConsole(diff: AiBomDiffResult): string {
+  return [
+    ...renderModuleHeader("AI BOM Governance", "Approved AI BOM drift and policy evaluation."),
+    sectionTitle("Summary"),
+    ...renderConsoleTable(
+      ["Added", "Removed", "Changed", "Unauthorized", "Blocked Capabilities", "Blocking"],
+      [[
+        String(diff.summary.added),
+        String(diff.summary.removed),
+        String(diff.summary.changed),
+        String(diff.summary.unauthorized),
+        String(diff.summary.blockedCapabilities),
+        String(diff.summary.blocking)
+      ]],
+      [7, 9, 9, 14, 22, 10]
+    ),
+    "",
+    sectionTitle("Violations"),
+    ...(diff.violations.length === 0
+      ? ["No AI BOM governance violations detected."]
+      : renderConsoleTable(
+        ["Status", "Severity", "Asset", "Location", "Reason"],
+        diff.violations.slice(0, 20).map((violation) => [
+          violation.blocking ? "BLOCK" : "AUDIT",
+          violation.severity,
+          `${violation.assetKind}:${violation.assetName}`,
+          `${violation.file}:${violation.line}`,
+          violation.reason
+        ]),
+        [8, 9, 30, 28, 48]
+      )),
+    ""
+  ].join("\n");
+}
+
+export function renderAiBomDiffMarkdown(diff: AiBomDiffResult): string {
+  return [
+    "## VibeGuard AI BOM Governance",
+    "",
+    `- Added: ${diff.summary.added}`,
+    `- Removed: ${diff.summary.removed}`,
+    `- Changed: ${diff.summary.changed}`,
+    `- Unauthorized: ${diff.summary.unauthorized}`,
+    `- Blocked capabilities: ${diff.summary.blockedCapabilities}`,
+    `- Blocking: ${diff.summary.blocking}`,
+    "",
+    "### Violations",
+    "",
+    ...(diff.violations.length === 0
+      ? ["No AI BOM governance violations detected."]
+      : diff.violations.map((violation) => `- ${violation.blocking ? "BLOCK" : "AUDIT"} ${violation.severity}: ${escapeMarkdown(violation.assetKind)} ${escapeMarkdown(violation.assetName)} at ${escapeMarkdown(violation.file)}:${violation.line} - ${escapeMarkdown(violation.reason)}`)),
+    ""
+  ].join("\n");
+}
+
+export function renderAiBomDiffHtml(diff: AiBomDiffResult): string {
+  return [
+    "<!doctype html><html><head><meta charset=\"utf-8\"><title>VibeGuard AI BOM Governance</title></head><body>",
+    "<h1>VibeGuard AI BOM Governance</h1>",
+    "<h2>Summary</h2>",
+    "<table><thead><tr><th>Added</th><th>Removed</th><th>Changed</th><th>Unauthorized</th><th>Blocked capabilities</th><th>Blocking</th></tr></thead>",
+    `<tbody><tr><td>${diff.summary.added}</td><td>${diff.summary.removed}</td><td>${diff.summary.changed}</td><td>${diff.summary.unauthorized}</td><td>${diff.summary.blockedCapabilities}</td><td>${diff.summary.blocking}</td></tr></tbody></table>`,
+    "<h2>Violations</h2>",
+    diff.violations.length === 0
+      ? "<p>No AI BOM governance violations detected.</p>"
+      : `<table><thead><tr><th>Status</th><th>Severity</th><th>Asset</th><th>Location</th><th>Reason</th></tr></thead><tbody>${diff.violations.map((violation) => `<tr><td>${violation.blocking ? "BLOCK" : "AUDIT"}</td><td>${escapeHtml(violation.severity)}</td><td>${escapeHtml(`${violation.assetKind}:${violation.assetName}`)}</td><td>${escapeHtml(`${violation.file}:${violation.line}`)}</td><td>${escapeHtml(violation.reason)}</td></tr>`).join("")}</tbody></table>`,
+    "</body></html>"
+  ].join("");
 }
 
 export function renderAiBomMarkdown(bom: AiBom): string {
@@ -856,6 +1009,10 @@ export function renderAgentGraphMarkdown(graph: AgentCapabilityGraph): string {
 
 function isAiBomReport(value: ReportLike): value is AiBomReportLike {
   return !Array.isArray(value) && "kind" in value && value.kind === "aibom";
+}
+
+function isAiBomDiffReport(value: ReportLike): value is AiBomDiffReportLike {
+  return !Array.isArray(value) && "kind" in value && value.kind === "aibom-diff";
 }
 
 function isAgentGraphReport(value: ReportLike): value is AgentGraphReportLike {

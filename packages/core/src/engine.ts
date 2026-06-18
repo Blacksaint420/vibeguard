@@ -1,5 +1,5 @@
 import { collectGitDiff, enrichDiffFilesWithFullContext, parseUnifiedDiff } from "./diff.ts";
-import { buildAiBom, buildAgentCapabilityGraph } from "./aibom/index.ts";
+import { buildAiBom, buildAgentCapabilityGraph, evaluateAiBomPolicy } from "./aibom/index.ts";
 import { applyPolicy, defaultPolicy, loadPolicy, shouldScanFile } from "./policy.ts";
 import { applyPolicyCoverage, collectRepository } from "./repository.ts";
 import { createVulnerabilityProvider } from "./vulnerabilities.ts";
@@ -12,10 +12,18 @@ import { runVulnerabilityScanner } from "../../scanners/src/dependencies.ts";
 export async function runCheck(options: CheckOptions = {}): Promise<CheckResult> {
   const started = Date.now();
   const cwd = options.cwd ?? process.cwd();
-  const policy = options.policy ?? loadPolicy(cwd);
+  const loadedPolicy = options.policy ?? loadPolicy(cwd);
+  const policy = options.aiGovernanceMode
+    ? { ...loadedPolicy, aiGovernance: { ...loadedPolicy.aiGovernance, mode: options.aiGovernanceMode } }
+    : loadedPolicy;
   const collection = collectFilesForCheck(options, cwd, policy);
   const aiBom = buildAiBom(collection.files, { targetPath: collection.targetPath });
   const agentGraph = buildAgentCapabilityGraph(aiBom);
+  const aiGovernance = evaluateAiBomPolicy({
+    currentBom: aiBom,
+    approvedBom: options.approvedAiBom,
+    policy: policy.aiGovernance
+  });
   const scannerFindings = await runScanners(collection.files, policy.enabledScanners);
   const vulnerabilityResult = options.vulnProvider && options.vulnProvider !== "null"
     ? await runVulnerabilityScanner(
@@ -46,7 +54,7 @@ export async function runCheck(options: CheckOptions = {}): Promise<CheckResult>
       filesChanged: collection.files.length,
       filesScanned: collection.files.length,
       findings: filtered.findings.length,
-      blocking: filtered.findings.filter((finding) => finding.blocking).length,
+      blocking: filtered.findings.filter((finding) => finding.blocking).length + aiGovernance.summary.blocking,
       truncated: filtered.truncated,
       durationMs: Date.now() - started,
       scanMode: collection.scanMode,
@@ -55,7 +63,8 @@ export async function runCheck(options: CheckOptions = {}): Promise<CheckResult>
       baselineSuppressed: filtered.baselineSuppressed
     },
     coverage: collection.coverage,
-    warnings
+    warnings,
+    aiGovernance
   };
 }
 

@@ -1,0 +1,31 @@
+mode: warn
+blockSeverities:
+  - high
+  - critical
+minConfidence: high
+
+aiGovernance:
+  mode: audit
+  approvedBom: .vibeguard/approved-aibom.json
+  blockOnDrift: false
+  allowedProviders:
+    - openai
+    - anthropic
+    - azure-openai
+  blockedProviders:
+    - unknown
+  blockedModels:
+    - "*-preview"
+  allowedCapabilities:
+    - llm-call
+    - external-provider
+    - prompt-control
+    - vector-search
+  blockedCapabilities:
+    - shell
+    - secret-access
+  changeRisk:
+    mode: audit
+    blockSeverities:
+      - critical
+    blockEvents: []

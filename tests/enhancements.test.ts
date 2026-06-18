@@ -394,7 +394,7 @@ test("report command writes improved markdown output to a file", async () => {
   });
   const report = readFileSync(join(root, "vibeguard-report.md"), "utf8");
 
-  assert.equal(result.exitCode, 1);
+  assert.equal(result.exitCode, 0);
   assert.equal(writes.join("").includes("Wrote vibeguard-report.md"), true);
   assert.equal(report.includes("### Recommended Next Actions"), true);
   assert.equal(report.includes("Fix JavaScript eval usage"), true);

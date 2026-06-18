@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibeguard.dev/schemas/vibeguard-aibom-policy.schema.json",
+  "title": "VibeGuard AI BOM Governance Policy",
+  "type": "object",
+  "properties": {
+    "aiGovernance": {
+      "type": "object",
+      "properties": {
+        "mode": { "type": "string", "enum": ["audit", "block"] },
+        "approvedBom": { "type": "string" },
+        "blockOnDrift": { "type": "boolean" },
+        "allowedProviders": { "type": "array", "items": { "type": "string" } },
+        "blockedProviders": { "type": "array", "items": { "type": "string" } },
+        "allowedModels": { "type": "array", "items": { "type": "string" } },
+        "blockedModels": { "type": "array", "items": { "type": "string" } },
+        "allowedMcpServers": { "type": "array", "items": { "type": "string" } },
+        "blockedCapabilities": { "type": "array", "items": { "type": "string" } },
+        "allowedCapabilities": { "type": "array", "items": { "type": "string" } },
+        "assetAllowlist": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": { "type": "string" },
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "file": { "type": "string" },
+              "capabilities": { "type": "array", "items": { "type": "string" } }
+            },
+            "additionalProperties": true
+          }
+        },
+        "exceptions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["assetId", "reason", "reviewer", "expires"],
+            "properties": {
+              "assetId": { "type": "string" },
+              "reason": { "type": "string" },
+              "reviewer": { "type": "string" },
+              "expires": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "changeRisk": {
+          "type": "object",
+          "properties": {
+            "mode": { "type": "string", "enum": ["audit", "block"] },
+            "blockSeverities": { "type": "array", "items": { "type": "string", "enum": ["low", "medium", "high", "critical"] } },
+            "blockEvents": { "type": "array", "items": { "type": "string" } }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

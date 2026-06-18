@@ -38,7 +38,7 @@ test("runCheck scans full repository when no diff mode is selected", async () =>
   mkdirSync(join(root, "src"), { recursive: true });
   writeFileSync(join(root, "src", "app.js"), "eval(req.body.code);\n");
 
-  const result = await runCheck({ cwd: root, policy: defaultPolicy() });
+  const result = await runCheck({ cwd: root, policy: { ...defaultPolicy(), mode: "block" } });
 
   assert.equal(result.files.length, 1);
   assert.equal(result.findings[0].ruleId, "js-eval");

@@ -1,0 +1,30 @@
+mode: warn
+blockSeverities:
+  - high
+  - critical
+minConfidence: high
+
+aiGovernance:
+  mode: block
+  approvedBom: .vibeguard/approved-aibom.json
+  blockOnDrift: true
+  allowedProviders:
+    - openai
+    - anthropic
+    - azure-openai
+  blockedProviders:
+    - unknown
+  blockedModels:
+    - "*-preview"
+  allowedMcpServers:
+    - filesystem-readonly
+  blockedCapabilities:
+    - shell
+    - secret-access
+  changeRisk:
+    mode: block
+    blockSeverities:
+      - critical
+    blockEvents:
+      - added-shell-capable-agent
+      - added-dangerous-mcp-server

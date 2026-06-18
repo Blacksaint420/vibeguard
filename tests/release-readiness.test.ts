@@ -7,9 +7,14 @@ import { runCli } from "./../packages/cli/src/cli.ts";
 test("AI BOM and graph schemas exist", () => {
   const bom = JSON.parse(readFileSync("schemas/vibeguard-aibom.schema.json", "utf8"));
   const graph = JSON.parse(readFileSync("schemas/vibeguard-agent-graph.schema.json", "utf8"));
+  const bomPolicy = JSON.parse(readFileSync("schemas/vibeguard-aibom-policy.schema.json", "utf8"));
+  const bomDiff = JSON.parse(readFileSync("schemas/vibeguard-aibom-diff.schema.json", "utf8"));
 
   assert.equal(bom.properties.schemaVersion.const, "vibeguard.aibom.v1");
+  assert.equal(bom.$defs.asset.required.includes("fingerprint"), true);
   assert.equal(graph.properties.schemaVersion.const, "vibeguard.agentGraph.v1");
+  assert.equal(bomPolicy.properties.aiGovernance.type, "object");
+  assert.equal(bomDiff.properties.schemaVersion.const, "vibeguard.aibomDiff.v1");
 });
 
 test("agentic strict policy is shipped", () => {
@@ -34,7 +39,8 @@ test("public collaboration templates exist", () => {
     ".github/PULL_REQUEST_TEMPLATE.md",
     ".github/dependabot.yml",
     "docs/releasing.md",
-    "docs/repository-management.md"
+    "docs/repository-management.md",
+    "docs/ai-bom-governance.md"
   ]) {
     assert.equal(existsSync(file), true, `${file} should exist before public release`);
   }
@@ -104,9 +110,16 @@ test("local package artifact includes enterprise policy examples", () => {
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));
 
   assert.equal(pkg.files.includes("examples/policies"), true);
+  assert.equal(pkg.files.includes("examples/approved-aibom"), true);
   assert.equal(pkg.files.includes("CONTRIBUTING.md"), true);
   assert.equal(pkg.files.includes("docs/releasing.md"), true);
   assert.equal(pkg.files.includes("docs/repository-management.md"), true);
+});
+
+test("AI governance examples are shipped", () => {
+  assert.equal(existsSync("examples/policies/vibeguard-ai-governance.yml"), true);
+  assert.equal(existsSync("examples/policies/vibeguard-ai-governance-strict.yml"), true);
+  assert.equal(existsSync("examples/approved-aibom/vibeguard-approved-aibom.json"), true);
 });
 
 test("generated local artifacts are ignored", () => {

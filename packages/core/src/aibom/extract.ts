@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import type { DiffFile, EvidenceStrength } from "../types.ts";
 import type { AiAsset, AiBom, AiBomOptions, AiCapability } from "./types.ts";
 
-type Candidate = Omit<AiAsset, "id">;
+type Candidate = Omit<AiAsset, "id" | "fingerprint">;
 
 const HIGH_RISK_CAPABILITIES = new Set<AiCapability>([
   "shell",
@@ -386,11 +386,27 @@ function withAssetId(asset: Candidate): AiAsset {
     .update(assetKey(asset))
     .digest("hex")
     .slice(0, 12);
+  const fingerprintSource = [
+    asset.kind,
+    normalizeAssetName(asset.name),
+    [...asset.capabilities].sort().join(","),
+    asset.file,
+    String(asset.line)
+  ].join("|");
+  const fingerprint = createHash("sha256")
+    .update(fingerprintSource)
+    .digest("hex")
+    .slice(0, 16);
 
   return {
     ...asset,
-    id: `${asset.kind}:${hash}`
+    id: `${asset.kind}:${hash}`,
+    fingerprint
   };
+}
+
+export function normalizeAssetName(name: string): string {
+  return name.trim().toLowerCase();
 }
 
 function higherConfidence(left: AiAsset["confidence"], right: AiAsset["confidence"]): AiAsset["confidence"] {

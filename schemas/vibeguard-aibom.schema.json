@@ -21,9 +21,10 @@
     },
     "asset": {
       "type": "object",
-      "required": ["id", "kind", "name", "file", "line", "confidence", "evidenceStrength", "evidenceSource", "detectionMethod", "capabilities", "metadata"],
+      "required": ["id", "fingerprint", "kind", "name", "file", "line", "confidence", "evidenceStrength", "evidenceSource", "detectionMethod", "capabilities", "metadata"],
       "properties": {
         "id": { "type": "string" },
+        "fingerprint": { "type": "string", "pattern": "^[a-f0-9]{16}$" },
         "kind": { "type": "string" },
         "name": { "type": "string" },
         "file": { "type": "string" },
