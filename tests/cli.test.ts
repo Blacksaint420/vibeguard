@@ -55,6 +55,12 @@ test("parseArgs supports interactive target option", () => {
   assert.equal(command.targetPath, "/tmp/CV Maker");
 });
 
+test("parseArgs supports setup guide aliases", () => {
+  assert.equal(parseArgs(["setup"]).name, "setup");
+  assert.equal(parseArgs(["install"]).name, "setup");
+  assert.equal(parseArgs(["configure"]).name, "setup");
+});
+
 test("parseArgs supports repository path for full scan", () => {
   const command = parseArgs(["check", "/tmp/CV Maker", "--format", "json"]);
 
@@ -357,6 +363,41 @@ test("runCli starts the framework console with no arguments", async () => {
   assert.equal(output.includes("VibeGuard Framework"), true);
   assert.equal(output.includes("doctor"), true);
   assert.equal(output.includes("VibeGuard doctor"), true);
+});
+
+test("runCli setup prints installation and API key guidance", async () => {
+  const writes: string[] = [];
+  const result = await runCli(["setup"], {
+    cwd: process.cwd(),
+    stdout: (text) => writes.push(text),
+    stderr: () => {}
+  });
+  const output = writes.join("");
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(output.includes("VIBEGUARD / SETUP GUIDE"), true);
+  assert.equal(output.includes("Node.js 20+"), true);
+  assert.equal(output.includes("vibeguard init"), true);
+  assert.equal(output.includes("--vuln-provider osv"), true);
+  assert.equal(output.includes("No OpenAI, Anthropic, Gemini, or LLM provider API key is required by VibeGuard"), true);
+  assert.equal(output.includes("NPM_TOKEN"), true);
+  assert.equal(output.includes("vibeguard doctor"), true);
+});
+
+test("runCli interactive setup command prints setup guide", async () => {
+  const writes: string[] = [];
+  const answers = ["", "setup", "exit"];
+  const result = await runCli([], {
+    cwd: process.cwd(),
+    prompt: async () => answers.shift() ?? "exit",
+    stdout: (text) => writes.push(text),
+    stderr: () => {}
+  });
+  const output = writes.join("");
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(output.includes("setup"), true);
+  assert.equal(output.includes("VIBEGUARD / SETUP GUIDE"), true);
 });
 
 test("runCli explain returns rule details", async () => {

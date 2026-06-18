@@ -20,6 +20,7 @@ import { renderAgentGraphConsole, renderAiBomConsole, renderFindings, renderRisk
 export type ParsedCommand =
   | { name: "interactive"; targetPath?: string }
   | { name: "init" }
+  | { name: "setup" }
   | { name: "doctor" }
   | { name: "explain"; id: string }
   | ({ name: "check" } & ScanCommandOptions)
@@ -77,6 +78,7 @@ export function parseArgs(argv: string[]): ParsedCommand {
     return { name: "interactive", ...parseInteractiveOptions(rest, command) };
   }
   if (command === "init") return { name: "init" };
+  if (command === "setup" || command === "install" || command === "configure") return { name: "setup" };
   if (command === "doctor") return { name: "doctor" };
   if (command === "explain") {
     const id = rest[0];
@@ -161,6 +163,11 @@ export async function runCli(argv: string[], environment: CliEnvironment = {}): 
 
     if (command.name === "help") {
       stdout(helpText());
+      return { exitCode: 0 };
+    }
+
+    if (command.name === "setup") {
+      stdout(renderSetupGuide(cwd));
       return { exitCode: 0 };
     }
 
@@ -270,6 +277,75 @@ function renderDoctor(cwd: string): string {
   ].join("\n");
 }
 
+function renderSetupGuide(cwd: string): string {
+  const configPath = join(cwd, "vibeguard.yml");
+  return [
+    "VIBEGUARD / SETUP GUIDE",
+    "=======================",
+    "Use this guide when installing VibeGuard or preparing a repository for local scanning.",
+    "",
+    "Required Runtime",
+    "----------------",
+    "- Node.js 20+",
+    "- npm 10+ recommended",
+    "- Git is recommended for diff, staged, baseline, and CI workflows",
+    "",
+    "Install",
+    "-------",
+    "From a local source checkout:",
+    "  npm install",
+    "  npm run build",
+    "  npm run vibeguard -- doctor",
+    "",
+    "From npm after the package is published:",
+    "  npm install -g vibeguard",
+    "  vibeguard doctor",
+    "",
+    "Repository Setup",
+    "----------------",
+    `Current target: ${cwd}`,
+    `Config file: ${existsSync(configPath) ? configPath : "not found yet"}`,
+    "  vibeguard init",
+    "  vibeguard doctor",
+    "  vibeguard check --format table",
+    "  vibeguard report --format html --output vibeguard-report.html",
+    "",
+    "API Keys And Credentials",
+    "------------------------",
+    "- No OpenAI, Anthropic, Gemini, or LLM provider API key is required by VibeGuard.",
+    "- Configure your own application API keys in your app runtime environment or secret manager, not in VibeGuard config.",
+    "- Common app-owned examples include OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY, and provider-specific service credentials.",
+    "- VibeGuard scans local files and should never be used as a secret store.",
+    "- NPM_TOKEN is only needed by maintainers when publishing the package; it is not required to scan an application.",
+    "",
+    "Optional Dependency Vulnerability Intelligence",
+    "----------------------------------------------",
+    "- Local scanning is offline by default.",
+    "- LLM03 dependency vulnerability checks can call OSV when explicitly enabled:",
+    "  vibeguard check --vuln-provider osv",
+    "- OSV lookup sends package names, versions, and ecosystems only; it does not upload source code.",
+    "- OSV does not require an API key.",
+    "- For strict CI, choose the network failure behavior explicitly:",
+    "  vibeguard check --vuln-provider osv --vuln-provider-fail-mode warn",
+    "  vibeguard check --vuln-provider osv --vuln-provider-fail-mode fail",
+    "",
+    "Useful Configuration",
+    "--------------------",
+    "- vibeguard.yml controls policy, severities, blocking behavior, suppressions, and report mapping.",
+    "- VIBEGUARD_TARGET can set the default target for interactive mode.",
+    "- Use --baseline vibeguard-baseline.json for accepted legacy findings.",
+    "- Use --output for JSON, SARIF, Markdown, HTML, AI BOM, graph, and risk exports.",
+    "",
+    "Verify Setup",
+    "------------",
+    "  vibeguard doctor",
+    "  vibeguard check --format table",
+    "  vibeguard aibom --format table",
+    "  vibeguard graph --format table",
+    ""
+  ].join("\n");
+}
+
 function renderWriteSummary(moduleName: string, outputPath: string, format: OutputFormat): string {
   return [
     `VIBEGUARD / ${moduleName.toUpperCase()}`,
@@ -290,6 +366,7 @@ function helpText(): string {
     "  vibeguard",
     "  vibeguard interactive [--target <path>]",
     "  vibeguard init",
+    "  vibeguard setup",
     "  vibeguard check [path] [--format table|json|sarif|markdown|html|risk-json]",
     "  vibeguard check --staged [--format table|json|sarif|markdown|html|risk-json]",
     "  vibeguard check --base <branch> [--format table|json|sarif|markdown|html|risk-json]",
@@ -304,6 +381,10 @@ function helpText(): string {
     "  vibeguard suppress <finding_id_or_rule_id> [--file <path>] [--line <n>] [--reason <text>] [--reviewer <email>] [--expires <YYYY-MM-DD>]",
     "  vibeguard explain <finding_id_or_rule_id>",
     "  vibeguard doctor",
+    "",
+    "Setup aliases:",
+    "  vibeguard install",
+    "  vibeguard configure",
     ""
   ].join("\n");
 }
@@ -425,6 +506,8 @@ async function runInteractiveFramework(
         const ruleId = normalizeChoice(await ask("Rule ID to explain [ai-model-trust-remote-code]: "), "ai-model-trust-remote-code");
         const explanation = explainRule(ruleId);
         stdout(explanation ? `${explanation}\n` : `No explanation found for ${ruleId}\n`);
+      } else if (action === "setup") {
+        stdout(renderSetupGuide(cwd));
       } else if (action === "doctor") {
         stdout(renderDoctor(cwd));
       } else {
@@ -461,6 +544,7 @@ function interactiveMenu(defaultTarget: string): string {
     "6  report      HTML report export",
     "7  explain     Rule brief and framework mappings",
     "8  doctor      Local runtime and privacy posture",
+    "   setup       Installation, API key, and configuration guide",
     "0  set-target  Change application target",
     "9  exit        Quit",
     ""
@@ -494,6 +578,9 @@ function interactiveAction(choice: string): string {
     explain: "explain",
     "8": "doctor",
     doctor: "doctor",
+    setup: "setup",
+    install: "setup",
+    configure: "setup",
     "9": "exit",
     exit: "exit",
     quit: "exit",
