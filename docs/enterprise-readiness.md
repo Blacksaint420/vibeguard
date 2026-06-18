@@ -22,9 +22,10 @@ Optional OSV lookup sends package name, version, and ecosystem metadata only whe
 1. Run `vibeguard aibom` to build AI asset inventory.
 2. Run `vibeguard graph` to review agent capabilities.
 3. Run `vibeguard check --format risk-json` to produce control evidence.
-4. Start with audit mode for one sprint.
-5. Move to `examples/policies/vibeguard-agentic-strict.yml` for merge gating.
-6. Enable `--strict-coverage` or `coverage.requireComplete: true` when teams are ready to fail incomplete scans.
+4. Generate `vibeguard dashboard --input .vibeguard/evidence/latest --output .vibeguard/evidence/latest/dashboard.html` for local AppSec and GRC review.
+5. Start with audit mode for one sprint.
+6. Move to `examples/policies/vibeguard-agentic-strict.yml` for merge gating.
+7. Enable `--strict-coverage` or `coverage.requireComplete: true` when teams are ready to fail incomplete scans.
 
 ## Release Gate
 

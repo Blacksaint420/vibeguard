@@ -226,9 +226,8 @@ test("formatters render table, JSON, SARIF, and Markdown", () => {
   assert.equal(table.includes("js-eval"), true);
   assert.equal(table.includes("VIBEGUARD / SECURITY SCAN"), true);
   assert.equal(table.includes("Merge recommendation: Review before merge"), true);
-  assert.equal(table.includes("Priority Action Plan"), true);
-  assert.equal(table.includes("Control Gaps"), true);
-  assert.equal(table.includes("Finding Evidence"), true);
+  assert.equal(table.includes("Next Best Actions"), true);
+  assert.equal(table.includes("Findings"), true);
   assert.equal(table.includes("Audit Footer"), true);
   assert.equal(markdown.includes("## VibeGuard Security Summary"), true);
 });
@@ -254,8 +253,8 @@ test("table report gives enterprise-ready guidance when no findings are present"
   assert.equal(table.includes("VIBEGUARD / SECURITY SCAN"), true);
   assert.equal(table.includes("Result: PASS"), true);
   assert.equal(table.includes("Merge recommendation: Safe to proceed"), true);
-  assert.equal(table.includes("Severity Mix"), true);
-  assert.equal(table.includes("Recommended Follow-Up"), true);
+  assert.equal(table.includes("Summary"), true);
+  assert.equal(table.includes("Next Step"), true);
 });
 
 test("risk console report gives GRC module output", () => {

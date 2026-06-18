@@ -20,9 +20,20 @@ For an HTML artifact:
 vibeguard check --format html > vibeguard-report.html
 ```
 
+For a local dashboard artifact from saved outputs:
+
+```bash
+vibeguard check --format json --output .vibeguard/evidence/latest/sast.json
+vibeguard aibom --format aibom-json --output .vibeguard/evidence/latest/aibom.json
+vibeguard graph --format graph-json --output .vibeguard/evidence/latest/agent-graph.json
+vibeguard dashboard --input .vibeguard/evidence/latest --output .vibeguard/evidence/latest/dashboard.html
+```
+
 SARIF output is suitable for code-scanning style ingestion. Markdown output is suitable for pull request comments.
 
 This version does not upload source code. OSV vulnerability lookup is opt-in with `--vuln-provider osv`.
+
+Dashboard generation writes local HTML only. Uploading that HTML with a CI artifact action is an explicit workflow choice made by the repository owner, not a VibeGuard upload flow.
 
 AI BOM governance is audit-only unless `--ai-governance-mode block` or policy `aiGovernance.mode: block` is explicitly configured. Start CI adoption with audit mode and review `aiGovernance` in JSON, SARIF, Markdown, HTML, or risk-json output before enabling blocking.
 

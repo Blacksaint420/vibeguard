@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { buildDashboardData } from "../packages/core/src/dashboard.ts";
+import { renderDashboardHtml } from "../packages/output/src/dashboard.ts";
 
 test("buildDashboardData summarizes AI BOM assets", () => {
   const dashboard = buildDashboardData({
@@ -358,4 +359,74 @@ test("buildDashboardData rejects non-string high-risk capabilities", () => {
   assert.equal(dashboard.aiBom, undefined);
   assert.deepEqual(dashboard.summary.highRiskCapabilities, []);
   assert.equal(dashboard.artifacts.some((artifact) => artifact.name === "aiBom" && artifact.status === "invalid"), true);
+});
+
+test("renderDashboardHtml escapes HTML from artifact values", () => {
+  const html = renderDashboardHtml(buildDashboardData({
+    generatedAt: "2026-06-18T00:00:00.000Z",
+    riskReport: {
+      tool: "vibeguard",
+      summary: { findings: 1, blocking: 0 },
+      findings: [{ title: "<img src=x onerror=alert(1)>", severity: "high", file: "src/ai.ts", line: 1 }]
+    }
+  }));
+
+  assert.equal(html.includes("<img src=x onerror=alert(1)>"), false);
+  assert.equal(html.includes("&lt;img src=x onerror=alert(1)&gt;"), true);
+  assert.equal(html.includes("https://"), false);
+});
+
+test("renderDashboardHtml is self contained", () => {
+  const html = renderDashboardHtml(buildDashboardData({
+    generatedAt: "2026-06-18T00:00:00.000Z",
+    riskReport: { tool: "vibeguard", summary: { findings: 0, blocking: 0 } }
+  }));
+
+  assert.equal(/<script\s+src=/i.test(html), false);
+  assert.equal(/<link\s+[^>]*href=/i.test(html), false);
+  assert.equal(/cdn\.|googleapis|analytics/i.test(html), false);
+  assert.equal(html.includes("uploadsByDefault"), true);
+  assert.equal(html.includes("default-src 'none'"), true);
+});
+
+test("renderDashboardHtml includes primary dashboard sections", () => {
+  const html = renderDashboardHtml(buildDashboardData({
+    generatedAt: "2026-06-18T00:00:00.000Z",
+    riskReport: { tool: "vibeguard", summary: { findings: 0, blocking: 0 } },
+    agentGraph: {
+      tool: "vibeguard",
+      schemaVersion: "vibeguard.agentGraph.v1",
+      generatedAt: "2026-06-18T00:00:00.000Z",
+      targetPath: "/repo",
+      summary: { agents: 1, tools: 1, capabilities: 1, highRiskPaths: 1 },
+      nodes: [
+        { id: "agent:deploy", kind: "agent", label: "deploy" },
+        { id: "tool:shell", kind: "tool", label: "shellTool" },
+        { id: "capability:shell", kind: "capability", label: "shell" }
+      ],
+      edges: [
+        { from: "agent:deploy", to: "tool:shell", relation: "uses", capability: "shell", evidenceStrength: "direct", evidenceSource: "test", detectionMethod: "test" },
+        { from: "tool:shell", to: "capability:shell", relation: "exposes", capability: "shell", evidenceStrength: "direct", evidenceSource: "test", detectionMethod: "test" }
+      ],
+      risks: [{
+        ruleId: "agent-capability-shell-without-approval",
+        title: "Agent can reach shell execution",
+        severity: "critical",
+        assetId: "tool:shell",
+        capability: "shell",
+        path: ["agent:deploy", "tool:shell", "capability:shell"],
+        evidenceStrength: "direct",
+        evidenceSource: "test",
+        detectionMethod: "test",
+        evidence: "shellTool exposes shell capability.",
+        suggestedFix: "Require approval."
+      }]
+    }
+  }));
+
+  for (const label of ["Overview", "AI BOM Inventory", "Approved BOM Status", "Agent Capability Graph", "AI Change-Risk", "AI-Aware SAST Findings", "Enterprise/GRC", "Coverage"]) {
+    assert.equal(html.includes(label), true, `${label} should render`);
+  }
+  assert.equal(html.includes("<svg"), true);
+  assert.equal(html.includes("Graph edge fallback"), true);
 });

@@ -51,21 +51,19 @@ Start the interactive framework:
 vibeguard
 ```
 
-The framework starts a console. Accept the default target when running from an application repository, or use `set-target` inside the console. You can select options by number or command name:
+The framework starts with a small menu. Set the target first, then choose the workflow you need. If you run a workflow before setting a target, VibeGuard will stop and guide you to set one.
 
 ```text
-scan
-risk
-aibom
-graph
-full
-report
-explain
-doctor
-exit
+1  Set target
+2  Run security scan
+3  Map AI assets and agent access
+4  Create HTML report
+5  Doctor
+6  Setup guide
+0  Exit
 ```
 
-The `graph` command shows an access diagram of what detected AI agents and tools can reach. Markdown graph output also includes a Mermaid diagram for reports.
+Advanced command names such as `risk`, `aibom`, `graph`, and `full` still work, but the launch menu keeps the first screen focused on the most useful workflows.
 
 You can also start the framework with an explicit target:
 
@@ -92,6 +90,7 @@ vibeguard check --quiet --max-findings 20 --min-confidence high
 vibeguard check --vuln-provider osv
 vibeguard aibom --format aibom-json --output vibeguard-aibom.json
 vibeguard graph --format graph-json --output vibeguard-agent-graph.json
+vibeguard dashboard --input .vibeguard/evidence/latest --output vibeguard-dashboard.html
 vibeguard baseline "/Users/you/Projects/CV Maker"
 vibeguard report "/Users/you/Projects/CV Maker" --format html --output vibeguard-report.html
 vibeguard suppress js-eval --file src/app.js --reason "Accepted generated sandbox"

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -42,6 +42,28 @@ test("parseArgs supports aibom and graph commands", () => {
   assert.equal(graph.format, "graph-json");
 });
 
+test("parseArgs supports dashboard command", () => {
+  const command = parseArgs(["dashboard", "--input", ".vibeguard/evidence/latest", "--output", "dashboard.html"]);
+
+  assert.equal(command.name, "dashboard");
+  assert.equal(command.input, ".vibeguard/evidence/latest");
+  assert.equal(command.output, "dashboard.html");
+});
+
+test("parseArgs requires dashboard output", () => {
+  assert.throws(
+    () => parseArgs(["dashboard", "--input", ".vibeguard/evidence/latest"]),
+    /dashboard requires --output/
+  );
+});
+
+test("parseArgs requires dashboard input source", () => {
+  assert.throws(
+    () => parseArgs(["dashboard", "--output", "dashboard.html"]),
+    /dashboard requires --input or at least one artifact flag/
+  );
+});
+
 test("parseArgs defaults to the interactive framework", () => {
   const command = parseArgs([]);
 
@@ -72,6 +94,7 @@ test("help includes AI BOM governance commands and flags", async () => {
   assert.equal(result.exitCode, 0);
   assert.equal(output.includes("vibeguard aibom approve"), true);
   assert.equal(output.includes("vibeguard aibom diff"), true);
+  assert.equal(output.includes("vibeguard dashboard"), true);
   assert.equal(output.includes("--approved-aibom"), true);
   assert.equal(output.includes("--ai-policy"), true);
   assert.equal(output.includes("--ai-governance-mode audit|block"), true);
@@ -366,7 +389,7 @@ test("runCli shows framework guidance when interactive mode has no TTY", async (
 
 test("runCli starts the framework console with no arguments", async () => {
   const writes: string[] = [];
-  const answers = ["", "doctor", "exit"];
+  const answers = ["doctor", "exit"];
   const result = await runCli([], {
     cwd: process.cwd(),
     prompt: async () => answers.shift() ?? "n",
@@ -379,6 +402,30 @@ test("runCli starts the framework console with no arguments", async () => {
   assert.equal(output.includes("VibeGuard Framework"), true);
   assert.equal(output.includes("doctor"), true);
   assert.equal(output.includes("VibeGuard doctor"), true);
+});
+
+test("interactive scan guides users to set a target first", async () => {
+  const writes: string[] = [];
+  const answers = ["scan", "", "1", "1", "5", "exit"];
+  const result = await runCli([], {
+    cwd: process.cwd(),
+    prompt: async () => answers.shift() ?? "exit",
+    collectRepositoryFiles: () => [{
+      path: "src/app.js",
+      oldPath: "src/app.js",
+      status: "modified",
+      addedLines: [{ line: 1, content: "eval(req.body.code);" }],
+      removedLines: []
+    }],
+    stdout: (text) => writes.push(text),
+    stderr: () => {}
+  });
+  const output = writes.join("");
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(output.includes("TARGET REQUIRED"), true);
+  assert.equal(output.includes("Target set"), true);
+  assert.equal(output.includes("VIBEGUARD / SECURITY SCAN"), true);
 });
 
 test("runCli setup prints installation and API key guidance", async () => {
@@ -406,7 +453,7 @@ test("runCli setup prints installation and API key guidance", async () => {
 
 test("runCli interactive setup command prints setup guide", async () => {
   const writes: string[] = [];
-  const answers = ["", "setup", "exit"];
+  const answers = ["setup", "exit"];
   const result = await runCli([], {
     cwd: process.cwd(),
     prompt: async () => answers.shift() ?? "exit",
@@ -416,7 +463,7 @@ test("runCli interactive setup command prints setup guide", async () => {
   const output = writes.join("");
 
   assert.equal(result.exitCode, 0);
-  assert.equal(output.includes("setup"), true);
+  assert.equal(output.includes("Setup guide"), true);
   assert.equal(output.includes("VIBEGUARD / SETUP GUIDE"), true);
 });
 
@@ -550,6 +597,80 @@ test("runCli creates nested output directories inside the working directory", as
 
   assert.equal(result.exitCode, 0);
   assert.equal(existsSync(join(cwd, "reports", "aibom.json")), true);
+});
+
+test("runCli dashboard writes self-contained HTML and ignores artifact blocking for exit code", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "vibeguard-dashboard-"));
+  const evidenceDir = join(cwd, ".vibeguard", "evidence", "latest");
+  mkdirSync(evidenceDir, { recursive: true });
+  writeFileSync(join(evidenceDir, "risk.json"), JSON.stringify({
+    tool: "vibeguard",
+    summary: { findings: 1, blocking: 3 },
+    findings: [{ title: "<script>alert(1)</script>", severity: "critical", ruleId: "test-rule", file: "src/ai.ts", line: 1 }]
+  }));
+
+  const result = await runCli(["dashboard", "--input", ".vibeguard/evidence/latest", "--output", "reports/dashboard.html"], {
+    cwd,
+    stdout: () => {},
+    stderr: () => {}
+  });
+  const html = readFileSync(join(cwd, "reports", "dashboard.html"), "utf8");
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(html.includes("VibeGuard Local Dashboard"), true);
+  assert.equal(html.includes("<script>alert(1)</script>"), false);
+  assert.equal(html.includes("&lt;script&gt;alert(1)&lt;/script&gt;"), true);
+  assert.equal(html.includes("uploadsByDefault"), true);
+});
+
+test("runCli dashboard rejects output paths outside the working directory", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "vibeguard-dashboard-outside-"));
+  writeFileSync(join(cwd, "risk.json"), JSON.stringify({
+    tool: "vibeguard",
+    summary: { findings: 0, blocking: 0 }
+  }));
+  const outsidePath = `${cwd}-outside-dashboard.html`;
+  const errors: string[] = [];
+  const result = await runCli(["dashboard", "--risk-json", "risk.json", "--output", outsidePath], {
+    cwd,
+    stdout: () => {},
+    stderr: (text) => errors.push(text)
+  });
+
+  assert.equal(result.exitCode, 2);
+  assert.equal(errors.join("").includes("--output must stay inside the working directory"), true);
+  assert.equal(existsSync(outsidePath), false);
+});
+
+test("runCli dashboard normalizes SARIF input into findings", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "vibeguard-dashboard-sarif-"));
+  writeFileSync(join(cwd, "sast.sarif"), JSON.stringify({
+    version: "2.1.0",
+    runs: [{
+      results: [{
+        ruleId: "ai-tool-output-used-as-command",
+        level: "error",
+        message: { text: "Tool output reaches command execution" },
+        locations: [{
+          physicalLocation: {
+            artifactLocation: { uri: "src/agent.ts" },
+            region: { startLine: 12 }
+          }
+        }]
+      }]
+    }]
+  }));
+
+  const result = await runCli(["dashboard", "--sarif", "sast.sarif", "--output", "dashboard.html"], {
+    cwd,
+    stdout: () => {},
+    stderr: () => {}
+  });
+  const html = readFileSync(join(cwd, "dashboard.html"), "utf8");
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(html.includes("Tool output reaches command execution"), true);
+  assert.equal(html.includes("src/agent.ts:12"), true);
 });
 
 test("runCli aibom approve creates an approved BOM file", async () => {

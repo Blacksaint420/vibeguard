@@ -9,12 +9,14 @@ test("AI BOM and graph schemas exist", () => {
   const graph = JSON.parse(readFileSync("schemas/vibeguard-agent-graph.schema.json", "utf8"));
   const bomPolicy = JSON.parse(readFileSync("schemas/vibeguard-aibom-policy.schema.json", "utf8"));
   const bomDiff = JSON.parse(readFileSync("schemas/vibeguard-aibom-diff.schema.json", "utf8"));
+  const dashboard = JSON.parse(readFileSync("schemas/vibeguard-dashboard.schema.json", "utf8"));
 
   assert.equal(bom.properties.schemaVersion.const, "vibeguard.aibom.v1");
   assert.equal(bom.$defs.asset.required.includes("fingerprint"), true);
   assert.equal(graph.properties.schemaVersion.const, "vibeguard.agentGraph.v1");
   assert.equal(bomPolicy.properties.aiGovernance.type, "object");
   assert.equal(bomDiff.properties.schemaVersion.const, "vibeguard.aibomDiff.v1");
+  assert.equal(dashboard.properties.schemaVersion.const, "vibeguard.dashboard.v1");
 });
 
 test("agentic strict policy is shipped", () => {
@@ -40,7 +42,8 @@ test("public collaboration templates exist", () => {
     ".github/dependabot.yml",
     "docs/releasing.md",
     "docs/repository-management.md",
-    "docs/ai-bom-governance.md"
+    "docs/ai-bom-governance.md",
+    "docs/dashboard.md"
   ]) {
     assert.equal(existsSync(file), true, `${file} should exist before public release`);
   }
@@ -114,6 +117,19 @@ test("local package artifact includes enterprise policy examples", () => {
   assert.equal(pkg.files.includes("CONTRIBUTING.md"), true);
   assert.equal(pkg.files.includes("docs/releasing.md"), true);
   assert.equal(pkg.files.includes("docs/repository-management.md"), true);
+  assert.equal(pkg.files.includes("docs/dashboard.md"), true);
+  assert.equal(pkg.files.includes("schemas"), true);
+});
+
+test("dashboard renderer stays local and self contained", () => {
+  const source = readFileSync("packages/output/src/dashboard.ts", "utf8");
+
+  assert.equal(source.includes("https://"), false);
+  assert.equal(source.includes("http://"), false);
+  assert.equal(source.includes("cdn."), false);
+  assert.equal(source.includes("analytics"), false);
+  assert.equal(/<script\s+src=/i.test(source), false);
+  assert.equal(existsSync("schemas/vibeguard-dashboard.schema.json"), true);
 });
 
 test("AI governance examples are shipped", () => {

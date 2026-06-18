@@ -215,27 +215,19 @@ export function renderTable(reportLike: ScanReportLike): string {
   const derivedSummary = buildDerivedReportSummary(report);
   const findings = sortFindingsForDecision(report.findings);
   const lines = [
-    ...renderModuleHeader("Security Scan", "Decision-grade summary for merge review, security triage, and audit handoff."),
+    ...renderModuleHeader("Security Scan", "Clear decision, next action, and evidence."),
     sectionTitle("Decision"),
     ...renderDecisionSnapshot(report, derivedSummary),
     "",
-    sectionTitle("Scan Scope"),
-    ...renderScanScope(report),
-    "",
-    sectionTitle("Severity Mix"),
-    ...renderSeverityDistribution(derivedSummary.severityDistribution)
+    sectionTitle("Summary"),
+    ...renderScanSummaryTable(report, derivedSummary)
   ];
 
   if (findings.length === 0) {
     lines.push(
       "",
-      sectionTitle("Result Details"),
-      "No findings were generated at the active policy and confidence threshold.",
-      "",
-      sectionTitle("Recommended Follow-Up"),
-      "- Run with --min-confidence medium for broader audit coverage.",
-      "- Scan the application source directory directly, for example: vibeguard check ./src --format table.",
-      "- Use vibeguard aibom ./src and vibeguard graph ./src for AI assets and agent capability paths.",
+      sectionTitle("Next Step"),
+      "No action required from this scan. For broader assurance, run the AI map or create the HTML report.",
       "",
       sectionTitle("Audit Footer"),
       renderScanFooter(report),
@@ -246,16 +238,10 @@ export function renderTable(reportLike: ScanReportLike): string {
 
   lines.push(
     "",
-    sectionTitle("Priority Action Plan"),
+    sectionTitle("Next Best Actions"),
     ...renderPriorityActionPlan(derivedSummary),
     "",
-    sectionTitle("Control Gaps"),
-    ...renderControlGapSummary(derivedSummary),
-    "",
-    sectionTitle("Top Risks"),
-    ...renderTopRiskTable(derivedSummary),
-    "",
-    sectionTitle("Finding Evidence"),
+    sectionTitle("Findings"),
     ...findings.map((finding, index) => renderFindingCard(finding, index + 1)),
     sectionTitle("Audit Footer"),
     renderRecommendationFooter(report),
@@ -1173,32 +1159,20 @@ function renderDecisionSnapshot(report: CheckResult, summary: DerivedReportSumma
   ];
 }
 
-function renderScanScope(report: CheckResult): string[] {
-  return [
-    `Target: ${displayText(report.summary.targetPath || ".")}`,
-    `Mode: ${report.summary.scanMode}`,
-    `Coverage: ${report.coverage.coverageStatus} (${report.coverage.coveragePercent}% scanned, ${report.summary.filesScanned} files in ${report.summary.durationMs}ms)`,
-    `Skipped: ${report.coverage.filesSkipped} skipped, ${report.coverage.filesExcludedByPolicy} policy-excluded, file limit ${report.coverage.fileLimitReached ? "reached" : "not reached"}`,
-    `Warnings: ${report.summary.warnings}`,
-    `Baseline suppressed: ${report.summary.baselineSuppressed}`,
-    `Truncated: ${report.summary.truncated ? "yes" : "no"}`
-  ];
-}
-
-function renderSeverityDistribution(distribution: SeverityDistribution): string[] {
-  const severities: Severity[] = ["critical", "high", "medium", "low"];
-  const total = severities.reduce((sum, severity) => sum + distribution[severity], 0);
-
-  return severities.map((severity) => {
-    const count = distribution[severity];
-    return `${severity.toUpperCase().padEnd(8)} ${String(count).padStart(3)} ${renderAsciiBar(count, total)}`;
-  });
-}
-
-function renderAsciiBar(count: number, total: number): string {
-  const width = 24;
-  const filled = total === 0 ? 0 : Math.max(count > 0 ? 1 : 0, Math.round((count / total) * width));
-  return `[${"#".repeat(filled)}${".".repeat(width - filled)}]`;
+function renderScanSummaryTable(report: CheckResult, summary: DerivedReportSummary): string[] {
+  return renderConsoleTable(
+    ["Files", "Coverage", "Findings", "Blocking", "Risk", "Owner", "Target"],
+    [[
+      String(report.summary.filesScanned),
+      `${report.coverage.coveragePercent}% ${report.coverage.coverageStatus}`,
+      String(report.summary.findings),
+      String(report.summary.blocking),
+      summary.businessRiskLevel,
+      summary.ownerSuggestion,
+      report.summary.targetPath || "."
+    ]],
+    [7, 18, 9, 9, 9, 12, 48]
+  );
 }
 
 function renderPriorityActionPlan(summary: DerivedReportSummary): string[] {

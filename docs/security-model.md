@@ -12,6 +12,7 @@ VibeGuard is local-first.
 - It handles unreadable files as scan warnings instead of crashing.
 - It uses optional OSV vulnerability lookup only when explicitly requested.
 - Optional vulnerability provider failures degrade to scan warnings by default; source, prompts, findings, AI BOM, graph data, and secrets are not uploaded.
+- `vibeguard dashboard` reads local artifacts and writes local self-contained HTML. It does not use external scripts, stylesheets, fonts, images, analytics, telemetry, or upload flows.
 
 The tool is a pre-review safety layer, not a replacement for secure design review, tests, dependency auditing, or production security monitoring.
 

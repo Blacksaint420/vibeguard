@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
@@ -5,6 +6,7 @@ import { createInterface } from "node:readline/promises";
 import { baselineFindingIds, createBaseline, DEFAULT_BASELINE_PATH, loadBaseline, serializeBaseline } from "../../core/src/baseline.ts";
 import { buildAiBom, buildAgentCapabilityGraph, evaluateAiBomPolicy } from "../../core/src/aibom/index.ts";
 import { collectGitDiff } from "../../core/src/diff.ts";
+import { buildDashboardData, type DashboardArtifactInputs, type DashboardArtifactRef } from "../../core/src/dashboard.ts";
 import { explainRule } from "../../core/src/explain.ts";
 import { runCheck } from "../../core/src/engine.ts";
 import {
@@ -17,6 +19,7 @@ import {
 import { collectRepositoryFiles } from "../../core/src/repository.ts";
 import type { AiBomDiffResult, AiGovernanceMode, Confidence, DiffFile, OutputFormat, Policy } from "../../core/src/types.ts";
 import type { AiBom } from "../../core/src/aibom/index.ts";
+import { renderDashboardHtml } from "../../output/src/dashboard.ts";
 import { renderAgentGraphConsole, renderAiBomConsole, renderFindings, renderRiskConsole } from "../../output/src/formatters.ts";
 
 export type ParsedCommand =
@@ -32,6 +35,7 @@ export type ParsedCommand =
   | ({ name: "aibom-approve" } & InventoryCommandOptions)
   | ({ name: "aibom-diff" } & AiBomDiffCommandOptions)
   | ({ name: "graph" } & InventoryCommandOptions)
+  | ({ name: "dashboard" } & DashboardCommandOptions)
   | { name: "suppress"; id: string; file?: string; line?: number; reason?: string; reviewer?: string; expires?: string; config?: string }
   | { name: "help" };
 
@@ -69,6 +73,34 @@ type AiBomDiffCommandOptions = InventoryCommandOptions & {
   aiPolicy?: string;
   aiGovernanceMode?: AiGovernanceMode;
 };
+
+type DashboardCommandOptions = {
+  input?: string;
+  output: string;
+  riskJson?: string;
+  sastJson?: string;
+  sarif?: string;
+  aiBom?: string;
+  aiBomDiff?: string;
+  graph?: string;
+  changeRisk?: string;
+  manifest?: string;
+  suppressions?: string;
+  grcMappings?: string;
+};
+
+const DASHBOARD_EVIDENCE_FILES = {
+  manifest: "manifest.json",
+  aiBom: "aibom.json",
+  aiBomDiff: "aibom-diff.json",
+  riskJson: "risk.json",
+  sastJson: "sast.json",
+  sarif: "sast.sarif",
+  graph: "agent-graph.json",
+  changeRisk: "change-risk.json",
+  suppressions: "suppressions.json",
+  grcMappings: "grc-mappings.json"
+} as const;
 
 export type CliEnvironment = {
   cwd?: string;
@@ -117,6 +149,9 @@ export function parseArgs(argv: string[]): ParsedCommand {
   }
   if (command === "graph") {
     return { name: "graph", ...parseInventoryOptions(rest, "graph", "table") };
+  }
+  if (command === "dashboard") {
+    return { name: "dashboard", ...parseDashboardOptions(rest) };
   }
   if (command === "suppress") {
     const id = rest[0];
@@ -263,6 +298,13 @@ export async function runCli(argv: string[], environment: CliEnvironment = {}): 
         stdout(`${rendered}\n`);
       }
       return { exitCode: diff.summary.blocking > 0 ? 1 : 0 };
+    }
+
+    if (command.name === "dashboard") {
+      const dashboard = buildDashboardData(loadDashboardArtifactInputs(command, cwd));
+      const outputPath = writeDashboardOutputFile(cwd, command.output, renderDashboardHtml(dashboard));
+      stdout(`Wrote ${outputPath}\n`);
+      return { exitCode: 0 };
     }
 
     if (!command.quiet && command.format === "table") {
@@ -425,6 +467,7 @@ function helpText(): string {
     "  vibeguard aibom approve [path] --output .vibeguard/approved-aibom.json",
     "  vibeguard aibom diff [path] --approved-aibom .vibeguard/approved-aibom.json [--format table|json|markdown|html|risk-json]",
     "  vibeguard graph [path] [--format table|graph-json|graph-markdown] [--output vibeguard-agent-graph.json]",
+    "  vibeguard dashboard --input .vibeguard/evidence/latest --output vibeguard-dashboard.html",
     "  vibeguard baseline [path] [--output vibeguard-baseline.json]",
     "  vibeguard report [path] [--format json|sarif|markdown|html|risk-json] [--output report.html]",
     "  vibeguard suppress <finding_id_or_rule_id> [--file <path>] [--line <n>] [--reason <text>] [--reviewer <email>] [--expires <YYYY-MM-DD>]",
@@ -445,7 +488,9 @@ async function runInteractiveFramework(
   stdout: (text: string) => void
 ): Promise<CliResult> {
   const canPrompt = environment.prompt ? true : environment.isTty ?? Boolean(process.stdin.isTTY);
-  const defaultTarget = resolve(cwd, command.targetPath ?? process.env.VIBEGUARD_TARGET ?? cwd);
+  const configuredTarget = command.targetPath ?? process.env.VIBEGUARD_TARGET;
+  const defaultTarget = resolve(cwd, configuredTarget ?? cwd);
+  const initialTarget = configuredTarget ? defaultTarget : undefined;
 
   if (!canPrompt) {
     stdout([
@@ -470,8 +515,8 @@ async function runInteractiveFramework(
 
   try {
     stdout(`${frameworkHeader()}\n`);
-    stdout("Type help for commands, set-target to change scope, or exit to quit.\n\n");
-    let currentTarget = await chooseInteractiveTarget(defaultTarget, cwd, ask);
+    stdout("Choose a module. Set a target first, or VibeGuard will guide you when a module needs one.\n\n");
+    let currentTarget = initialTarget;
 
     while (true) {
       stdout(interactiveMenu(currentTarget));
@@ -487,12 +532,13 @@ async function runInteractiveFramework(
       }
 
       if (action === "target") {
-        currentTarget = await chooseInteractiveTarget(currentTarget, cwd, ask);
-        stdout(`Target set to ${currentTarget}\n`);
+        currentTarget = await chooseInteractiveTarget(currentTarget ?? defaultTarget, cwd, ask);
+        stdout(renderTargetSet(currentTarget));
         continue;
       }
 
       if (action === "scan") {
+        currentTarget = await requireInteractiveTarget(currentTarget, defaultTarget, cwd, ask, stdout, "Security scan");
         const scopePath = await chooseInteractiveScope(currentTarget, cwd, ask);
         const minConfidence = await chooseInteractiveConfidence(ask);
         const maxFindings = await chooseMaxFindings(ask);
@@ -503,7 +549,18 @@ async function runInteractiveFramework(
         const result = await runInteractiveCheck(scopePath, environment, cwd, { format: "table", minConfidence, maxFindings });
         stdout(renderFindings(result, "table"));
         if (result.summary.blocking > 0) finalExitCode = 1;
+      } else if (action === "map") {
+        currentTarget = await requireInteractiveTarget(currentTarget, defaultTarget, cwd, ask, stdout, "AI map");
+        const scopePath = await chooseInteractiveScope(currentTarget, cwd, ask);
+        stdout(renderRunIntent("AI map", scopePath, [
+          "Builds the AI inventory and agent capability graph together.",
+          "Use this when you want to understand what AI exists and what it can reach."
+        ]));
+        const bom = buildAiBom(collectInteractiveFiles(scopePath, environment), { targetPath: scopePath });
+        stdout(`${renderAiBomConsole(bom)}\n`);
+        stdout(`${renderAgentGraphConsole(buildAgentCapabilityGraph(bom))}\n`);
       } else if (action === "risk") {
+        currentTarget = await requireInteractiveTarget(currentTarget, defaultTarget, cwd, ask, stdout, "GRC risk briefing");
         const scopePath = await chooseInteractiveScope(currentTarget, cwd, ask);
         const maxFindings = await chooseMaxFindings(ask);
         stdout(renderRunIntent("GRC risk briefing", scopePath, [
@@ -514,6 +571,7 @@ async function runInteractiveFramework(
         stdout(renderRiskConsole(result));
         if (result.summary.blocking > 0) finalExitCode = 1;
       } else if (action === "aibom") {
+        currentTarget = await requireInteractiveTarget(currentTarget, defaultTarget, cwd, ask, stdout, "AI inventory");
         const scopePath = await chooseInteractiveScope(currentTarget, cwd, ask);
         stdout(renderRunIntent("AI Bill of Materials", scopePath, [
           "Inventories AI providers, models, prompts, agents, tools, vector stores, MCP servers, and data stores.",
@@ -522,6 +580,7 @@ async function runInteractiveFramework(
         const bom = buildAiBom(collectInteractiveFiles(scopePath, environment), { targetPath: scopePath });
         stdout(`${renderAiBomConsole(bom)}\n`);
       } else if (action === "graph") {
+        currentTarget = await requireInteractiveTarget(currentTarget, defaultTarget, cwd, ask, stdout, "Agent capability graph");
         const scopePath = await chooseInteractiveScope(currentTarget, cwd, ask);
         stdout(renderRunIntent("Agent capability graph", scopePath, [
           "Builds an asset graph from AI BOM data and highlights high-risk capability paths.",
@@ -530,6 +589,7 @@ async function runInteractiveFramework(
         const bom = buildAiBom(collectInteractiveFiles(scopePath, environment), { targetPath: scopePath });
         stdout(`${renderAgentGraphConsole(buildAgentCapabilityGraph(bom))}\n`);
       } else if (action === "full") {
+        currentTarget = await requireInteractiveTarget(currentTarget, defaultTarget, cwd, ask, stdout, "Full review");
         const scopePath = await chooseInteractiveScope(currentTarget, cwd, ask);
         const maxFindings = await chooseMaxFindings(ask);
         stdout(renderRunIntent("Full VibeGuard review", scopePath, [
@@ -542,6 +602,7 @@ async function runInteractiveFramework(
         stdout(`${renderAgentGraphConsole(result.agentGraph!)}\n`);
         if (result.summary.blocking > 0) finalExitCode = 1;
       } else if (action === "report") {
+        currentTarget = await requireInteractiveTarget(currentTarget, defaultTarget, cwd, ask, stdout, "HTML report");
         const scopePath = await chooseInteractiveScope(currentTarget, cwd, ask);
         const outputPath = normalizeChoice(await ask("Report output path [vibeguard-report.html]: "), "vibeguard-report.html");
         stdout(renderRunIntent("HTML report", scopePath, [
@@ -552,7 +613,7 @@ async function runInteractiveFramework(
         stdout(renderWriteSummary("Report Export", written, "html"));
         if (result.summary.blocking > 0) finalExitCode = 1;
       } else if (action === "explain") {
-        const ruleId = normalizeChoice(await ask("Rule ID to explain [ai-model-trust-remote-code]: "), "ai-model-trust-remote-code");
+        const ruleId = normalizeChoice(await ask("Rule ID from scan output [js-eval]: "), "js-eval");
         const explanation = explainRule(ruleId);
         stdout(explanation ? `${explanation}\n` : `No explanation found for ${ruleId}\n`);
       } else if (action === "setup") {
@@ -577,25 +638,23 @@ function frameworkHeader(): string {
   ].join("\n");
 }
 
-function interactiveMenu(defaultTarget: string): string {
+function interactiveMenu(currentTarget: string | undefined): string {
   return [
     "Session",
     "-------",
-    `Target: ${truncateMiddle(defaultTarget, 72)}`,
+    `Target: ${currentTarget ? truncateMiddle(currentTarget, 72) : "not set"}`,
     "",
-    "Modules",
-    "-------",
-    "1  scan        Security scan: findings, merge decision, fixes",
-    "2  risk        GRC risk brief: categories, controls, frameworks",
-    "3  aibom       AI inventory: providers, models, prompts, tools",
-    "4  graph       Agent access graph: reachable capabilities",
-    "5  full        Full review: scan + AI BOM + graph",
-    "6  report      HTML report export",
-    "7  explain     Rule brief and framework mappings",
-    "8  doctor      Local runtime and privacy posture",
-    "   setup       Installation, API key, and configuration guide",
-    "0  set-target  Change application target",
-    "9  exit        Quit",
+    "Menu",
+    "----",
+    "1  Set target",
+    "2  Run security scan",
+    "3  Map AI assets and agent access",
+    "4  Create HTML report",
+    "5  Doctor",
+    "6  Setup guide",
+    "0  Exit",
+    "",
+    "Tip: type the number or the option name.",
     ""
   ].join("\n");
 }
@@ -603,33 +662,35 @@ function interactiveMenu(defaultTarget: string): string {
 function interactiveAction(choice: string): string {
   const normalized = choice.trim().toLowerCase();
   const aliases: Record<string, string> = {
-    "0": "target",
+    "1": "target",
     "set-target": "target",
     target: "target",
     use: "target",
-    "1": "scan",
+    set: "target",
+    "2": "scan",
     scan: "scan",
     check: "scan",
-    "2": "risk",
+    "3": "map",
+    map: "map",
+    ai: "map",
+    inventory: "map",
     risk: "risk",
     grc: "risk",
-    "3": "aibom",
     aibom: "aibom",
     bom: "aibom",
-    "4": "graph",
     graph: "graph",
-    "5": "full",
     full: "full",
     review: "full",
-    "6": "report",
+    "4": "report",
     report: "report",
-    "7": "explain",
     explain: "explain",
-    "8": "doctor",
+    "5": "doctor",
     doctor: "doctor",
+    "6": "setup",
     setup: "setup",
     install: "setup",
     configure: "setup",
+    "0": "exit",
     "9": "exit",
     exit: "exit",
     quit: "exit",
@@ -660,6 +721,42 @@ function renderRunIntent(title: string, targetPath: string, details: string[]): 
   ].join("\n");
 }
 
+async function requireInteractiveTarget(
+  currentTarget: string | undefined,
+  defaultTarget: string,
+  cwd: string,
+  ask: (question: string) => Promise<string>,
+  stdout: (text: string) => void,
+  moduleName: string
+): Promise<string> {
+  if (currentTarget) return currentTarget;
+  stdout(renderTargetRequired(moduleName, defaultTarget));
+  const target = await chooseInteractiveTarget(defaultTarget, cwd, ask);
+  stdout(renderTargetSet(target));
+  return target;
+}
+
+function renderTargetRequired(moduleName: string, defaultTarget: string): string {
+  return [
+    "",
+    "TARGET REQUIRED",
+    "===============",
+    `${moduleName} needs an application or repository target before it can run.`,
+    `Press Enter to use: ${defaultTarget}`,
+    ""
+  ].join("\n");
+}
+
+function renderTargetSet(targetPath: string): string {
+  return [
+    "",
+    "Target set",
+    "----------",
+    targetPath,
+    ""
+  ].join("\n");
+}
+
 async function chooseInteractiveTarget(
   defaultTarget: string,
   cwd: string,
@@ -676,19 +773,21 @@ async function chooseInteractiveScope(
 ): Promise<string> {
   const srcPath = join(targetPath, "src");
   const serverPath = join(targetPath, "server");
-  const defaultScope = existsSync(srcPath) ? "1" : "3";
+  const recommendedPath = existsSync(srcPath)
+    ? srcPath
+    : existsSync(serverPath)
+      ? serverPath
+      : targetPath;
   const choice = normalizeChoice(await ask([
     "Scope:",
-    existsSync(srcPath) ? `  1. App source (${srcPath})` : "  1. App source (not found, falls back to target)",
-    existsSync(serverPath) ? `  2. Server (${serverPath})` : "  2. Server (not found, falls back to target)",
-    `  3. Full target (${targetPath})`,
-    "  4. Custom path",
-    `Select scope [${defaultScope}]: `
-  ].join("\n")), defaultScope);
+    `  1. Recommended (${recommendedPath})`,
+    `  2. Full target (${targetPath})`,
+    "  3. Custom path",
+    "Select scope [1]: "
+  ].join("\n")), "1");
 
-  if (choice === "1") return existsSync(srcPath) ? srcPath : targetPath;
-  if (choice === "2") return existsSync(serverPath) ? serverPath : targetPath;
-  if (choice === "4") return resolve(cwd, normalizeChoice(await ask("Custom path: "), targetPath));
+  if (choice === "1") return recommendedPath;
+  if (choice === "3") return resolve(cwd, normalizeChoice(await ask("Custom path: "), targetPath));
   return targetPath;
 }
 
@@ -1000,6 +1099,70 @@ function parseAiBomDiffOptions(rest: string[]): AiBomDiffCommandOptions {
   return { targetPath, format, output, approvedAiBom, aiPolicy, aiGovernanceMode };
 }
 
+function parseDashboardOptions(rest: string[]): DashboardCommandOptions {
+  const options: Partial<DashboardCommandOptions> = {};
+
+  for (let index = 0; index < rest.length; index += 1) {
+    const arg = rest[index];
+    if (arg === "--input") {
+      options.input = requiredValue(rest[index + 1], "--input");
+      index += 1;
+    } else if (arg === "--output") {
+      options.output = requiredValue(rest[index + 1], "--output");
+      index += 1;
+    } else if (arg === "--risk-json") {
+      options.riskJson = requiredValue(rest[index + 1], "--risk-json");
+      index += 1;
+    } else if (arg === "--sast-json") {
+      options.sastJson = requiredValue(rest[index + 1], "--sast-json");
+      index += 1;
+    } else if (arg === "--sarif") {
+      options.sarif = requiredValue(rest[index + 1], "--sarif");
+      index += 1;
+    } else if (arg === "--aibom") {
+      options.aiBom = requiredValue(rest[index + 1], "--aibom");
+      index += 1;
+    } else if (arg === "--aibom-diff") {
+      options.aiBomDiff = requiredValue(rest[index + 1], "--aibom-diff");
+      index += 1;
+    } else if (arg === "--graph") {
+      options.graph = requiredValue(rest[index + 1], "--graph");
+      index += 1;
+    } else if (arg === "--change-risk") {
+      options.changeRisk = requiredValue(rest[index + 1], "--change-risk");
+      index += 1;
+    } else if (arg === "--manifest") {
+      options.manifest = requiredValue(rest[index + 1], "--manifest");
+      index += 1;
+    } else if (arg === "--suppressions") {
+      options.suppressions = requiredValue(rest[index + 1], "--suppressions");
+      index += 1;
+    } else if (arg === "--grc-mappings") {
+      options.grcMappings = requiredValue(rest[index + 1], "--grc-mappings");
+      index += 1;
+    } else {
+      throw new Error(`Unknown dashboard option: ${arg}`);
+    }
+  }
+
+  if (!options.output) throw new Error("dashboard requires --output");
+  const hasArtifactInput = Boolean(
+    options.input ||
+    options.riskJson ||
+    options.sastJson ||
+    options.sarif ||
+    options.aiBom ||
+    options.aiBomDiff ||
+    options.graph ||
+    options.changeRisk ||
+    options.manifest ||
+    options.suppressions ||
+    options.grcMappings
+  );
+  if (!hasArtifactInput) throw new Error("dashboard requires --input or at least one artifact flag");
+  return options as DashboardCommandOptions;
+}
+
 function parseInventoryOptions(rest: string[], commandName: string, defaultFormat: OutputFormat): InventoryCommandOptions {
   let targetPath: string | undefined;
   let format: OutputFormat = defaultFormat;
@@ -1064,6 +1227,171 @@ function loadApprovedBomForCommand(command: { approvedAiBom?: string }, policy: 
   const approvedBomPath = command.approvedAiBom ?? policy.aiGovernance.approvedBom;
   if (!approvedBomPath) return undefined;
   return JSON.parse(readFileSync(resolveCwdPath(cwd, approvedBomPath, "--approved-aibom"), "utf8")) as AiBom;
+}
+
+function loadDashboardArtifactInputs(command: DashboardCommandOptions, cwd: string): DashboardArtifactInputs {
+  const inputs: DashboardArtifactInputs = { artifactRefs: [] };
+  const discovered = command.input ? discoverDashboardArtifacts(cwd, command.input) : {};
+  const explicit: Partial<Record<keyof typeof DASHBOARD_EVIDENCE_FILES, string | undefined>> = {
+    manifest: command.manifest,
+    aiBom: command.aiBom,
+    aiBomDiff: command.aiBomDiff,
+    riskJson: command.riskJson,
+    sastJson: command.sastJson,
+    sarif: command.sarif,
+    graph: command.graph,
+    changeRisk: command.changeRisk,
+    suppressions: command.suppressions,
+    grcMappings: command.grcMappings
+  };
+
+  const paths = { ...discovered, ...stripUndefined(explicit) };
+  setDashboardArtifact(inputs, "manifest", paths.manifest, cwd);
+  setDashboardArtifact(inputs, "aiBom", paths.aiBom, cwd);
+  setDashboardArtifact(inputs, "aiBomDiff", paths.aiBomDiff, cwd);
+  setDashboardArtifact(inputs, "agentGraph", paths.graph, cwd, "graph");
+  setDashboardArtifact(inputs, "changeRisk", paths.changeRisk, cwd);
+  setDashboardArtifact(inputs, "suppressions", paths.suppressions, cwd);
+  setDashboardArtifact(inputs, "grcMappings", paths.grcMappings, cwd);
+
+  const riskPath = paths.riskJson ?? paths.sastJson ?? paths.sarif;
+  setDashboardArtifact(inputs, "riskReport", riskPath, cwd, riskPath === paths.sarif ? "sarif" : riskPath === paths.sastJson ? "sastJson" : "riskJson");
+  return inputs;
+}
+
+function discoverDashboardArtifacts(cwd: string, inputPath: string): Partial<Record<keyof typeof DASHBOARD_EVIDENCE_FILES, string>> {
+  const inputRoot = resolveDashboardPath(cwd, inputPath);
+  const discovered: Partial<Record<keyof typeof DASHBOARD_EVIDENCE_FILES, string>> = {};
+  for (const [key, filename] of Object.entries(DASHBOARD_EVIDENCE_FILES) as Array<[keyof typeof DASHBOARD_EVIDENCE_FILES, string]>) {
+    const candidate = join(inputRoot, filename);
+    if (existsSync(candidate)) discovered[key] = candidate;
+  }
+  return discovered;
+}
+
+function setDashboardArtifact(
+  inputs: DashboardArtifactInputs,
+  field: keyof DashboardArtifactInputs,
+  artifactPath: string | undefined,
+  cwd: string,
+  refName = field
+): void {
+  if (!artifactPath) return;
+  const loaded = readJsonArtifact(cwd, artifactPath, String(refName));
+  (inputs as Record<string, unknown>)[field] = refName === "sarif" ? sarifToDashboardRiskReport(loaded.value) : loaded.value;
+  inputs.artifactRefs?.push(loaded.ref);
+}
+
+function readJsonArtifact(cwd: string, artifactPath: string, name: string): { value?: unknown; ref: DashboardArtifactRef } {
+  const fullPath = resolveDashboardPath(cwd, artifactPath);
+  if (!existsSync(fullPath)) {
+    return {
+      ref: {
+        name,
+        path: artifactPath,
+        status: "missing",
+        message: `Artifact was not found: ${artifactPath}`
+      }
+    };
+  }
+
+  const content = readFileSync(fullPath, "utf8");
+  const baseRef = {
+    name,
+    path: artifactPath,
+    sha256: createHash("sha256").update(content).digest("hex")
+  };
+  try {
+    const value = JSON.parse(content) as unknown;
+    return {
+      value,
+      ref: {
+        ...baseRef,
+        schemaVersion: schemaVersionForArtifact(value),
+        status: "available"
+      }
+    };
+  } catch (error) {
+    return {
+      ref: {
+        ...baseRef,
+        status: "invalid",
+        message: `Artifact is not valid JSON: ${error instanceof Error ? error.message : String(error)}`
+      }
+    };
+  }
+}
+
+function resolveDashboardPath(cwd: string, requestedPath: string): string {
+  return isAbsolute(requestedPath) ? requestedPath : resolve(cwd, requestedPath);
+}
+
+function writeDashboardOutputFile(cwd: string, outputPath: string, content: string): string {
+  const resolvedPath = resolveCwdPath(cwd, outputPath, "--output");
+  mkdirSync(dirname(resolvedPath), { recursive: true });
+  writeFileSync(resolvedPath, content);
+  return outputPath;
+}
+
+function sarifToDashboardRiskReport(value: unknown): unknown {
+  if (!isRecord(value) || value.version === undefined || !Array.isArray(value.runs)) return value;
+  const findings = value.runs.flatMap((run) => {
+    if (!isRecord(run) || !Array.isArray(run.results)) return [];
+    return run.results.filter(isRecord).map((result) => {
+      const location = sarifLocation(result);
+      return {
+        ruleId: typeof result.ruleId === "string" ? result.ruleId : "",
+        title: isRecord(result.message) && typeof result.message.text === "string" ? result.message.text : typeof result.ruleId === "string" ? result.ruleId : "SARIF result",
+        severity: sarifSeverity(result),
+        confidence: "high",
+        file: location.file,
+        line: location.line,
+        evidenceStrength: "direct",
+        evidenceSource: "SARIF result",
+        suggestedFix: ""
+      };
+    });
+  });
+  return {
+    tool: "vibeguard",
+    summary: {
+      findings: findings.length,
+      blocking: findings.filter((finding) => finding.severity === "critical" || finding.severity === "high").length
+    },
+    findings
+  };
+}
+
+function sarifLocation(result: Record<string, unknown>): { file: string; line: number } {
+  const locations = Array.isArray(result.locations) ? result.locations.filter(isRecord) : [];
+  const physicalLocation = locations.length > 0 && isRecord(locations[0].physicalLocation) ? locations[0].physicalLocation : {};
+  const artifactLocation = isRecord(physicalLocation.artifactLocation) ? physicalLocation.artifactLocation : {};
+  const region = isRecord(physicalLocation.region) ? physicalLocation.region : {};
+  return {
+    file: typeof artifactLocation.uri === "string" ? artifactLocation.uri : "",
+    line: typeof region.startLine === "number" ? region.startLine : 1
+  };
+}
+
+function sarifSeverity(result: Record<string, unknown>): string {
+  if (result.level === "error") return "high";
+  if (result.level === "warning") return "medium";
+  if (result.level === "note") return "low";
+  return "medium";
+}
+
+function stripUndefined<T extends Record<string, string | undefined>>(input: T): Partial<T> {
+  return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined)) as Partial<T>;
+}
+
+function schemaVersionForArtifact(value: unknown): string | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value) && typeof (value as { schemaVersion?: unknown }).schemaVersion === "string"
+    ? (value as { schemaVersion: string }).schemaVersion
+    : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function defaultReportPath(format: OutputFormat): string {
