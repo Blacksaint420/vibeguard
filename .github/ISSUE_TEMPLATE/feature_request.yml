@@ -1,0 +1,40 @@
+name: Feature request
+description: Propose a rule, scanner, output, integration, or workflow improvement.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - CLI workflow
+        - Scanner or rule
+        - AI BOM
+        - Agent capability graph
+        - Reports or output formats
+        - GitHub Action or CI
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What security, developer, or GRC workflow should this improve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false

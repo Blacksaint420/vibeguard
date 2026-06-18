@@ -93,6 +93,8 @@ test("sensitive file scanner reports risky file path changes", () => {
   assert.equal(findings.length, 1);
   assert.equal(findings[0].ruleId, "sensitive-file-change");
   assert.equal(findings[0].severity, "high");
+  assert.equal(findings[0].snippet, "[redacted sensitive file content]");
+  assert.equal(findings[0].snippet.includes("npm_secret"), false);
 });
 
 test("AI scanner detects unsafe agent tool and RAG patterns", () => {
@@ -106,6 +108,7 @@ test("AI scanner detects unsafe agent tool and RAG patterns", () => {
 
   assert.deepEqual(findings.map((finding) => finding.ruleId).sort(), [
     "ai-agent-shell-tool-no-approval",
+    "ai-llm-call-without-timeout",
     "ai-rag-query-without-filter",
     "ai-unbounded-token-request"
   ]);
@@ -237,4 +240,81 @@ test("AI scanner detects unsafe model supply chain flags", () => {
   assert.equal(findings.length, 1);
   assert.equal(findings[0].ruleId, "ai-model-trust-remote-code");
   assert.equal(findings[0].severity, "critical");
+});
+
+test("AI scanner detects expanded enterprise AI-native risks", () => {
+  const findings = runAiScanner([
+    file("src/ai-route.ts", [
+      "app.post('/chat', async (req, res) => openai.chat.completions.create({ model: 'gpt-4.1', messages: [{ role: 'user', content: req.body.prompt }] }));",
+      "const parsed = JSON.parse(completion.choices[0].message.content);",
+      "const prompt = `Answer this request: ${req.body.question}`;",
+      "console.warn(systemPrompt);",
+      "await vectorStore.upsert([{ pageContent: req.body.document }]);",
+      "await vectorStore.similaritySearch(query, 4, { filter: req.body.filter });",
+      "const shellTool = { name: 'run_shell', execute: runShell, schema: { command: z.string() } };"
+    ]),
+    file("src/model.py", [
+      "model = AutoModel.from_pretrained('org/model')"
+    ]),
+    file(".cursor/mcp.json", [
+      '{ "mcpServers": { "filesystem": { "command": "npx", "args": ["@modelcontextprotocol/server-filesystem"] } } }'
+    ])
+  ]);
+
+  const ruleIds = findings.map((finding) => finding.ruleId).sort();
+
+  assert.equal(ruleIds.includes("ai-output-json-without-schema-validation"), true);
+  assert.equal(ruleIds.includes("ai-llm-call-without-timeout"), true);
+  assert.equal(ruleIds.includes("ai-llm-call-without-rate-limit"), true);
+  assert.equal(ruleIds.includes("ai-llm-call-without-cost-tracking"), true);
+  assert.equal(ruleIds.includes("ai-prompt-template-interpolates-user-input"), true);
+  assert.equal(ruleIds.includes("ai-system-prompt-logged"), true);
+  assert.equal(ruleIds.includes("ai-rag-upsert-untrusted-content"), true);
+  assert.equal(ruleIds.includes("ai-rag-client-controlled-filter"), true);
+  assert.equal(ruleIds.includes("ai-mcp-config-dangerous-server"), true);
+  assert.equal(ruleIds.includes("ai-tool-broad-input-schema"), true);
+  assert.equal(ruleIds.includes("ai-model-revision-unpinned"), true);
+});
+
+test("AI scanner avoids safe enterprise AI-native patterns", () => {
+  const findings = runAiScanner([
+    file("src/safe-ai-route.ts", [
+      "app.post('/chat', rateLimit(), requireAuth, async (req, res) => { const response = await openai.chat.completions.create({ model: 'gpt-4.1', messages, timeout: 30000, response_format: { type: 'json_schema', json_schema: schema }, max_tokens: 1000 }); recordUsage(response.usage); });",
+      "const parsed = schema.safeParse(JSON.parse(completion.choices[0].message.content));",
+      "const prompt = promptTemplate.format({ user_input: delimit(req.body.question) });",
+      "logger.info('prompt id only', { promptId });",
+      "await moderate(req.body.document); await vectorStore.upsert([{ pageContent: req.body.document, metadata: { trusted: true } }]);",
+      "await vectorStore.similaritySearch(query, 4, { filter: serverAuthzFilter(user) });",
+      "const shellTool = { name: 'run_shell', execute: runShell, schema: z.object({ command: z.enum(['status']) }) };"
+    ]),
+    file("src/model.py", [
+      "model = AutoModel.from_pretrained('org/model', revision='5f4dcc3b5aa765d61d8327deb882cf99')"
+    ]),
+    file(".cursor/mcp.json", [
+      '{ "mcpServers": { "filesystem": { "command": "npx", "args": ["@modelcontextprotocol/server-filesystem"], "scope": "/tmp/project" } } }'
+    ])
+  ]);
+
+  assert.deepEqual(findings.map((finding) => finding.ruleId), []);
+});
+
+test("AI scanner accepts explicitly delimited prompt interpolation", () => {
+  const findings = runAiScanner([
+    file("src/prompts.ts", [
+      "`Risk: ${asUserContent(input.why)}`",
+      "`Relevant changed code: ${asUserContent(input.snippet)}`"
+    ])
+  ]);
+
+  assert.equal(findings.some((finding) => finding.ruleId === "ai-prompt-template-interpolates-user-input"), false);
+});
+
+test("AI scanner does not treat ordinary parser functions as agent tool schemas", () => {
+  const findings = runAiScanner([
+    file("packages/scanners/src/dependencies.ts", [
+      "function parseDependencyLine(path: string, line: string): { name: string; version: string } | undefined {"
+    ])
+  ]);
+
+  assert.equal(findings.some((finding) => finding.ruleId === "ai-tool-broad-input-schema"), false);
 });

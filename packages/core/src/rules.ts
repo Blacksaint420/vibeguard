@@ -55,6 +55,83 @@ const BUILT_IN_RULE_LIST: BuiltInRuleDefinition[] = [
     "Disable trust_remote_code, pin reviewed model revisions, and vendor or audit any required custom model code."
   ),
   builtInRule(
+    "ai-output-json-without-schema-validation",
+    "LLM JSON output parsed without schema validation",
+    "ai",
+    "LLM JSON output is untrusted data and needs schema validation before application logic consumes it.",
+    "Validate parsed model output with a schema, safe parser, function/tool schema, or provider structured-output contract."
+  ),
+  builtInRule(
+    "ai-llm-call-without-timeout",
+    "LLM call has no visible timeout or abort signal",
+    "ai",
+    "LLM calls should have bounded execution time so one request cannot consume runtime resources indefinitely.",
+    "Add a request timeout, abort signal, client timeout option, or wrapper enforcing a deadline around the LLM call."
+  ),
+  builtInRule(
+    "ai-llm-call-without-rate-limit",
+    "User-facing LLM endpoint has no visible rate limit or quota",
+    "ai",
+    "User-triggered LLM endpoints need rate limits or quotas because every request can consume scarce model capacity.",
+    "Add per-user or per-tenant rate limiting, authenticated quotas, and abuse monitoring around the LLM endpoint."
+  ),
+  builtInRule(
+    "ai-llm-call-without-cost-tracking",
+    "User-triggered LLM call lacks visible usage or cost tracking",
+    "ai",
+    "Enterprise LLM paths need usage accounting so teams can detect abuse, assign cost, and enforce quotas.",
+    "Record model usage, token counts, request owner, and cost metadata for user-triggered LLM calls."
+  ),
+  builtInRule(
+    "ai-prompt-template-interpolates-user-input",
+    "Prompt template interpolates user-controlled input",
+    "ai",
+    "Prompt templates should separate instructions from user data and delimit or sanitize untrusted content.",
+    "Pass user content as a separate message or delimit and sanitize it before interpolation."
+  ),
+  builtInRule(
+    "ai-system-prompt-logged",
+    "System or developer prompt is logged",
+    "ai",
+    "Privileged prompts are sensitive operational data and should not be logged verbatim.",
+    "Log prompt identifiers or versions instead of full prompt text, and redact prompt content from telemetry."
+  ),
+  builtInRule(
+    "ai-rag-upsert-untrusted-content",
+    "Untrusted content is inserted into a vector store",
+    "ai",
+    "RAG ingestion needs provenance, trust marking, moderation, or review before untrusted content enters retrieval paths.",
+    "Moderate and mark provenance for ingested content, quarantine untrusted submissions, and restrict retrieval to trusted documents."
+  ),
+  builtInRule(
+    "ai-rag-client-controlled-filter",
+    "RAG query uses client-controlled filter or namespace",
+    "ai",
+    "RAG filters should be derived from server-side authorization context, not raw client input.",
+    "Build filters from authenticated tenant, role, and document authorization context on the server."
+  ),
+  builtInRule(
+    "ai-mcp-config-dangerous-server",
+    "MCP config exposes dangerous server without scope metadata",
+    "ai",
+    "Dangerous MCP servers need explicit scope, permissions, sandboxing, or approval metadata.",
+    "Add scoped roots, read-only settings, allowlists, sandboxing, and approval requirements to MCP server configuration."
+  ),
+  builtInRule(
+    "ai-tool-broad-input-schema",
+    "Agent tool accepts broad free-form input",
+    "ai",
+    "High-risk tool arguments need structured constraints instead of free-form model-generated strings.",
+    "Use enums, literals, allowlists, strict regexes, or server-side argument builders for dangerous tool inputs."
+  ),
+  builtInRule(
+    "ai-model-revision-unpinned",
+    "Model artifact revision is not pinned",
+    "ai",
+    "Model artifacts are supply-chain inputs and should be pinned to reviewed immutable revisions.",
+    "Pin model loads to a reviewed revision or commit hash and track model provenance in release metadata."
+  ),
+  builtInRule(
     "agent-capability-shell-without-approval",
     "Agent can reach shell execution",
     "ai",

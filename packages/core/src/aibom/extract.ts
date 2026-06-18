@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import type { DiffFile } from "../types.ts";
+import type { DiffFile, EvidenceStrength } from "../types.ts";
 import type { AiAsset, AiBom, AiBomOptions, AiCapability } from "./types.ts";
 
 type Candidate = Omit<AiAsset, "id">;
@@ -14,7 +14,7 @@ const HIGH_RISK_CAPABILITIES = new Set<AiCapability>([
 ]);
 
 export function buildAiBom(files: DiffFile[], options: AiBomOptions): AiBom {
-  const assets = dedupeAssets(files.flatMap(extractAssetsFromFile));
+  const assets = dedupeAssets(files.filter((file) => !isIgnoredInventoryPath(file.path)).flatMap(extractAssetsFromFile));
   const providers = assets.filter((asset) => asset.kind === "provider");
   const models = assets.filter((asset) => asset.kind === "model");
   const prompts = assets.filter((asset) => asset.kind === "prompt");
@@ -70,6 +70,9 @@ function extractAssetsFromFile(file: DiffFile): AiAsset[] {
         file: file.path,
         line: line.line,
         confidence: "high",
+        evidenceStrength: "direct",
+        evidenceSource: "provider syntax",
+        detectionMethod: "provider-syntax",
         capabilities: ["llm-call", "external-provider"],
         metadata: {}
       });
@@ -82,6 +85,9 @@ function extractAssetsFromFile(file: DiffFile): AiAsset[] {
         file: file.path,
         line: line.line,
         confidence: "high",
+        evidenceStrength: "direct",
+        evidenceSource: "model literal",
+        detectionMethod: "model-literal",
         capabilities: ["llm-call"],
         metadata: {}
       });
@@ -95,6 +101,9 @@ function extractAssetsFromFile(file: DiffFile): AiAsset[] {
         file: file.path,
         line: line.line,
         confidence: "medium",
+        evidenceStrength: "direct",
+        evidenceSource: "prompt variable assignment",
+        detectionMethod: "prompt-variable",
         capabilities: ["prompt-control"],
         metadata: {}
       });
@@ -108,6 +117,9 @@ function extractAssetsFromFile(file: DiffFile): AiAsset[] {
         file: file.path,
         line: line.line,
         confidence: "medium",
+        evidenceStrength: "direct",
+        evidenceSource: "createAgent call",
+        detectionMethod: "agent-constructor",
         capabilities: ["llm-call"],
         metadata: agent.toolNames.length ? { tools: agent.toolNames.join(",") } : {}
       });
@@ -120,6 +132,9 @@ function extractAssetsFromFile(file: DiffFile): AiAsset[] {
         file: file.path,
         line: line.line,
         confidence: "medium",
+        evidenceStrength: "same-file",
+        evidenceSource: "agent tools array",
+        detectionMethod: "agent-tool-reference",
         capabilities: tool.capabilities,
         metadata: { source: "agent-tool-reference" }
       });
@@ -133,6 +148,9 @@ function extractAssetsFromFile(file: DiffFile): AiAsset[] {
         file: file.path,
         line: line.line,
         confidence: "high",
+        evidenceStrength: "direct",
+        evidenceSource: "tool definition",
+        detectionMethod: "tool-definition",
         capabilities: tool.capabilities,
         metadata: {}
       });
@@ -145,6 +163,9 @@ function extractAssetsFromFile(file: DiffFile): AiAsset[] {
         file: file.path,
         line: line.line,
         confidence: "medium",
+        evidenceStrength: "direct",
+        evidenceSource: "vector store API usage",
+        detectionMethod: "vector-store-usage",
         capabilities: ["vector-search"],
         metadata: {}
       });
@@ -157,6 +178,9 @@ function extractAssetsFromFile(file: DiffFile): AiAsset[] {
         file: file.path,
         line: line.line,
         confidence: "medium",
+        evidenceStrength: "direct",
+        evidenceSource: "data store API usage",
+        detectionMethod: "data-store-usage",
         capabilities: ["database"],
         metadata: {}
       });
@@ -170,6 +194,9 @@ function extractAssetsFromFile(file: DiffFile): AiAsset[] {
         file: file.path,
         line: line.line,
         confidence: "high",
+        evidenceStrength: "direct",
+        evidenceSource: "MCP server config",
+        detectionMethod: "mcp-config",
         capabilities: uniqueCapabilities(["mcp-tool", ...capabilitiesFromText(line.content)]),
         metadata: {}
       });
@@ -228,7 +255,12 @@ function detectToolReferences(source: string): { name: string; capabilities: AiC
 }
 
 function detectToolDefinition(source: string): { name: string; capabilities: AiCapability[] } | undefined {
-  if (!/\b(tool|tools|function|functions)\b/i.test(source) && !/\bexecute\s*:/.test(source)) return undefined;
+  const hasToolKeyword = /\b[\w$]*tools?\b/i.test(source) ||
+    /\b(functions|function_call|tool_choice)\b/i.test(source);
+  const hasToolShape = /\b(execute|handler|callback|func)\s*:/.test(source) ||
+    /\b(tool|DynamicTool|StructuredTool)\s*\(/i.test(source) ||
+    /\btools?\s*[:=]/i.test(source);
+  if (!hasToolKeyword || !hasToolShape) return undefined;
 
   const name = variableName(source) ?? "tool";
   const capabilities = uniqueCapabilities([...capabilitiesForToolName(name), ...capabilitiesFromText(source)]);
@@ -282,6 +314,10 @@ function detectMcpServer(path: string, rawSource: string): string | undefined {
   return name;
 }
 
+function isIgnoredInventoryPath(path: string): boolean {
+  return /(^|\/)(node_modules|dist|build|coverage|\.next|\.git|\.worktrees)(\/|$)/.test(path);
+}
+
 function variableName(source: string): string | undefined {
   return /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\b/.exec(source)?.[1];
 }
@@ -327,6 +363,10 @@ function dedupeAssets(assets: AiAsset[]): AiAsset[] {
       ...existing,
       line: Math.min(existing.line, asset.line),
       confidence: higherConfidence(existing.confidence, asset.confidence),
+      evidenceStrength: strongerEvidence(existing.evidenceStrength, asset.evidenceStrength),
+      evidenceSource: strongerEvidence(existing.evidenceStrength, asset.evidenceStrength) === existing.evidenceStrength ? existing.evidenceSource : asset.evidenceSource,
+      detectionMethod: strongerEvidence(existing.evidenceStrength, asset.evidenceStrength) === existing.evidenceStrength ? existing.detectionMethod : asset.detectionMethod,
+      relatedLocations: uniqueRelatedLocations([...(existing.relatedLocations ?? []), ...(asset.relatedLocations ?? []), { file: asset.file, line: asset.line, label: asset.detectionMethod }]),
       capabilities: uniqueCapabilities([...existing.capabilities, ...asset.capabilities]),
       metadata: { ...asset.metadata, ...existing.metadata }
     });
@@ -356,6 +396,21 @@ function withAssetId(asset: Candidate): AiAsset {
 function higherConfidence(left: AiAsset["confidence"], right: AiAsset["confidence"]): AiAsset["confidence"] {
   const rank = { low: 1, medium: 2, high: 3 };
   return rank[left] >= rank[right] ? left : right;
+}
+
+function strongerEvidence(left: EvidenceStrength, right: EvidenceStrength): EvidenceStrength {
+  const rank = {
+    unknown: 0,
+    "repository-inferred": 1,
+    "same-module": 2,
+    "same-file": 3,
+    direct: 4
+  };
+  return rank[left] >= rank[right] ? left : right;
+}
+
+function uniqueRelatedLocations(locations: NonNullable<AiAsset["relatedLocations"]>): NonNullable<AiAsset["relatedLocations"]> {
+  return [...new Map(locations.map((location) => [`${location.file}\0${location.line}\0${location.label ?? ""}`, location])).values()];
 }
 
 function uniqueCapabilities(capabilities: AiCapability[]): AiCapability[] {

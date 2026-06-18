@@ -9,7 +9,7 @@ import { runCheck } from "../packages/core/src/engine.ts";
 import { collectRepository } from "../packages/core/src/repository.ts";
 import { defaultPolicy } from "../packages/core/src/policy.ts";
 import { runCodeScanner } from "../packages/scanners/src/code.ts";
-import { extractDependencies, runDependencyScanner } from "../packages/scanners/src/dependencies.ts";
+import { extractDependencies, runDependencyScanner, runVulnerabilityScanner } from "../packages/scanners/src/dependencies.ts";
 import { runSecretScanner } from "../packages/scanners/src/secrets.ts";
 import { renderHtml, renderJson, renderMarkdown, renderSarif } from "../packages/output/src/formatters.ts";
 
@@ -36,7 +36,18 @@ test("parseArgs supports scan ergonomics and dependency intelligence options", (
     "--min-confidence",
     "high",
     "--vuln-provider",
-    "mock"
+    "mock",
+    "--vuln-provider-fail-mode",
+    "warn",
+    "--vuln-provider-timeout-ms",
+    "2500",
+    "--vuln-provider-concurrency",
+    "3",
+    "--strict-coverage",
+    "--max-files",
+    "25",
+    "--max-file-bytes",
+    "4096"
   ]);
 
   assert.equal(command.name, "check");
@@ -47,6 +58,12 @@ test("parseArgs supports scan ergonomics and dependency intelligence options", (
   assert.equal(command.maxFindings, 5);
   assert.equal(command.minConfidence, "high");
   assert.equal(command.vulnProvider, "mock");
+  assert.equal(command.vulnProviderFailMode, "warn");
+  assert.equal(command.vulnProviderTimeoutMs, 2500);
+  assert.equal(command.vulnProviderConcurrency, 3);
+  assert.equal(command.strictCoverage, true);
+  assert.equal(command.maxFiles, 25);
+  assert.equal(command.maxFileBytes, 4096);
 });
 
 test("parseArgs supports baseline, report, and suppress workflows", () => {
@@ -472,6 +489,36 @@ test("mock vulnerability provider produces vulnerable dependency findings", asyn
   assert.equal(result.findings.some((finding) => finding.ruleId === "dep-vulnerable-package"), true);
 });
 
+test("vulnerability provider errors degrade to warnings by default", async () => {
+  const result = await runVulnerabilityScanner([
+    file("package.json", ['"dependencies": {', '"left-pad": "1.0.0"', "}"])
+  ], {
+    name: "broken",
+    async query() {
+      throw new Error("provider timeout");
+    }
+  }, { failMode: "warn" });
+
+  assert.equal(result.findings.length, 0);
+  assert.equal(result.warnings.length, 1);
+  assert.equal(result.warnings[0].code, "vulnerability-provider");
+  assert.equal(result.warnings[0].message.includes("provider timeout"), true);
+});
+
+test("vulnerability provider fail mode preserves fail-fast behavior", async () => {
+  await assert.rejects(
+    runVulnerabilityScanner([
+      file("package.json", ['"dependencies": {', '"left-pad": "1.0.0"', "}"])
+    ], {
+      name: "broken",
+      async query() {
+        throw new Error("provider failure");
+      }
+    }, { failMode: "fail" }),
+    /provider failure/
+  );
+});
+
 test("HTML, Markdown, and SARIF reports include workflow metadata", async () => {
   const result = await runCheck({
     repositoryFiles: [file("src/app.js", ["eval(req.body.code)"])],
@@ -494,4 +541,28 @@ test("HTML, Markdown, and SARIF reports include workflow metadata", async () => 
   assert.equal(markdown.includes("Fix JavaScript eval usage"), true);
   assert.equal(sarif.runs[0].invocations[0].executionSuccessful, true);
   assert.equal(Array.isArray(sarif.runs[0].invocations[0].properties.recommendations), true);
+});
+
+test("HTML report contains leadership-ready executive sections", async () => {
+  const result = await runCheck({
+    repositoryFiles: [
+      file("src/agent.ts", [
+        "const completion = await openai.chat.completions.create({ messages: [{ role: 'system', content: `Admin policy: ${req.body.policy}` }] });",
+        "exec(completion.choices[0].message.content);"
+      ])
+    ],
+    policy: defaultPolicy()
+  });
+
+  const html = renderHtml(result);
+
+  assert.equal(html.includes("Executive Summary"), true);
+  assert.equal(html.includes("Risk Posture"), true);
+  assert.equal(html.includes("Merge Decision"), true);
+  assert.equal(html.includes("Severity Distribution"), true);
+  assert.equal(html.includes("Recommended Actions"), true);
+  assert.equal(html.includes("Control Mappings"), true);
+  assert.equal(html.includes("Technical Appendix"), true);
+  assert.equal(html.includes("<details"), true);
+  assert.equal(html.includes("overflow-wrap:anywhere"), true);
 });

@@ -6,3 +6,4 @@
 - Added AI Bill of Materials output.
 - Added Agent Capability Graph output.
 - Added enterprise risk JSON, SARIF, Markdown, HTML, and table reports.
+- Added open-source contributor, support, issue template, pull request, and release documentation.

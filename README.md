@@ -1,12 +1,31 @@
 # VibeGuard
 
-VibeGuard is a local-first CLI safety check for developers using AI coding agents.
+VibeGuard is a local-first AI security CLI framework for developers, security teams, and GRC teams.
 
 > Check the code your AI just changed before you accept, commit, or merge it.
 
-The first version scans the repository you point it at and reports exploitable code, LLM application, secret/PII, and confirmed vulnerable dependency findings. Findings are mapped to the OWASP Top 10 for LLM Applications 2025 where applicable, with evidence, attack path, impact, and a concrete fix. It does not upload source code.
+The guided CLI walks users through developer scans, GRC risk briefings, AI Bill of Materials generation, agent capability graphing, reports, rule explanations, and local health checks. The same engine is still available through explicit commands for automation. Findings are mapped to the OWASP Top 10 for LLM Applications 2025 and other AI security frameworks where applicable, with evidence, attack path, impact, and a concrete fix. It does not upload source code.
 
-## Install Locally
+## Project Status
+
+VibeGuard is pre-1.0. The CLI is usable for local scans and CI experiments, but rule behavior, report fields, and schema details may change while the project hardens its public release process.
+
+## Install
+
+After the package is published to npm, run it without installing:
+
+```bash
+npx --yes vibeguard@latest doctor
+npx --yes vibeguard@latest check
+```
+
+Or install the CLI globally:
+
+```bash
+npm install -g vibeguard
+```
+
+For local development from source:
 
 ```bash
 npm install
@@ -17,6 +36,36 @@ npm link
 The published CLI runs from compiled JavaScript in `dist/` and targets Node 20+. The source tests use the local Node runtime.
 
 ## Commands
+
+Start the interactive framework:
+
+```bash
+vibeguard
+```
+
+The framework starts a console. Accept the default target when running from an application repository, or use `set-target` inside the console. You can select options by number or command name:
+
+```text
+scan
+risk
+aibom
+graph
+full
+report
+explain
+doctor
+exit
+```
+
+The `graph` command shows an access diagram of what detected AI agents and tools can reach. Markdown graph output also includes a Mermaid diagram for reports.
+
+You can also start the framework with an explicit target:
+
+```bash
+vibeguard interactive --target "/Users/you/Projects/CV Maker"
+```
+
+Automation commands remain available:
 
 ```bash
 vibeguard init
@@ -72,15 +121,20 @@ Enterprise AI inventory and graphing:
 - [`docs/agent-capability-graph.md`](./docs/agent-capability-graph.md)
 - [`docs/enterprise-readiness.md`](./docs/enterprise-readiness.md)
 
+Release readiness requires a clean VibeGuard self-scan under the repository `vibeguard.yml` policy.
+
 ## Reports
 
 Output formats:
 
-- `table`: terminal report focused on OWASP category, impact, location, and fix priority.
+- `table`: terminal security brief with merge decision, business risk, severity mix, priority actions, control gaps, evidence, and follow-up guidance when no findings are generated.
 - `json`: automation-friendly report with OWASP summary, warnings, scan metadata, recommendations, evidence, attack path, and impact.
 - `sarif`: code-scanning compatible report with invocation metadata, OWASP mapping, and recommendations.
 - `markdown`: pull request or review summary grouped by OWASP LLM category with vulnerability narratives.
 - `html`: standalone human-readable report with summary cards, OWASP mapping, recommended next actions, evidence, attack path, impact, and fixes.
+- `risk-json`: GRC-oriented risk evidence with risk categories, framework mappings, control gaps, technical evidence, AI BOM, and agent graph context.
+- `aibom-json` / `aibom-markdown`: AI asset inventory.
+- `graph-json` / `graph-markdown`: agent capability graph and high-risk paths.
 
 Useful scan controls:
 
@@ -115,3 +169,38 @@ vibeguard init
 ```
 
 See [`vibeguard.yml.example`](./vibeguard.yml.example) and [`docs/configuration.md`](./docs/configuration.md).
+
+## GitHub Action
+
+After this repository is tagged, use the composite action from a workflow:
+
+```yaml
+permissions:
+  contents: read
+  security-events: write
+
+steps:
+  - uses: actions/checkout@v6
+  - id: vibeguard
+    uses: OWNER/vibeguard@v0.1.0
+    with:
+      path: "."
+      version: "latest"
+  - uses: github/codeql-action/upload-sarif@v4
+    with:
+      sarif_file: ${{ steps.vibeguard.outputs.sarif-file }}
+      category: vibeguard
+  - name: Fail on blocking findings
+    if: steps.vibeguard.outputs.exit-code == '1'
+    run: exit 1
+```
+
+See [`docs/ci.md`](./docs/ci.md) for CI usage and [`.github/workflows/vibeguard-code-scanning.yml`](./.github/workflows/vibeguard-code-scanning.yml) for this repository's own scan workflow.
+
+## Contributing
+
+Contributions are welcome. Read [`CONTRIBUTING.md`](./CONTRIBUTING.md) for setup, verification, and pull request guidance. For release steps, see [`docs/releasing.md`](./docs/releasing.md).
+
+## Security
+
+Do not open public issues for suspected vulnerabilities. Use the private reporting process in [`SECURITY.md`](./SECURITY.md).

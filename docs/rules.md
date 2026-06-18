@@ -6,15 +6,33 @@ Default code and secret/PII findings are limited to first-party source paths. Ve
 
 ## OWASP LLM 2025 Coverage
 
-- `LLM01:2025 Prompt Injection`: user-controlled content enters system or developer prompts.
-- `LLM02:2025 Sensitive Information Disclosure`: concrete tokens, credentials, private keys, high-confidence PII, and public data rules.
-- `LLM03:2025 Supply Chain`: dependency/component versions confirmed vulnerable by a vulnerability provider.
+- `LLM01:2025 Prompt Injection`: user-controlled content enters privileged prompts or prompt templates without separation.
+- `LLM02:2025 Sensitive Information Disclosure`: concrete tokens, credentials, private keys, high-confidence PII, public data rules, and prompt leakage into logs.
+- `LLM03:2025 Supply Chain`: dependency/component versions confirmed vulnerable by a vulnerability provider and unpinned model artifacts.
 - `LLM04:2025 Data and Model Poisoning`: untrusted request content is written directly into vector or embedding stores.
-- `LLM05:2025 Improper Output Handling`: LLM output reaches code execution sinks.
-- `LLM06:2025 Excessive Agency`: automatic tool calls are connected to command, file-write, or destructive sinks.
-- `LLM07:2025 System Prompt Leakage`: system or developer prompt text is returned to callers.
+- `LLM05:2025 Improper Output Handling`: LLM output reaches code execution sinks or is parsed as JSON without schema validation.
+- `LLM06:2025 Excessive Agency`: automatic tool calls, MCP servers, or broad tool schemas expose dangerous capabilities.
+- `LLM07:2025 System Prompt Leakage`: system or developer prompt text is returned to callers or logged.
 - `LLM08:2025 Vector and Embedding Weaknesses`: request-controlled metadata filters are passed into vector search.
-- `LLM10:2025 Unbounded Consumption`: request-controlled token budgets are passed into model calls.
+- `LLM10:2025 Unbounded Consumption`: request-controlled token budgets, missing timeouts, missing rate limits, and missing usage accounting.
+
+## AI-Native Rules
+
+- `ai-agent-shell-tool-no-approval`
+- `ai-output-json-without-schema-validation`
+- `ai-llm-call-without-timeout`
+- `ai-llm-call-without-rate-limit` (`--min-confidence medium`)
+- `ai-llm-call-without-cost-tracking` (`--min-confidence medium`)
+- `ai-prompt-template-interpolates-user-input`
+- `ai-system-prompt-logged`
+- `ai-rag-query-without-filter` (`--min-confidence medium`)
+- `ai-rag-upsert-untrusted-content`
+- `ai-rag-client-controlled-filter`
+- `ai-mcp-config-dangerous-server`
+- `ai-tool-broad-input-schema`
+- `ai-model-trust-remote-code`
+- `ai-model-revision-unpinned`
+- `ai-unbounded-token-request`
 
 ## JavaScript and TypeScript
 

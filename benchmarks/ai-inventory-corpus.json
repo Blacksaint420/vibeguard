@@ -28,6 +28,64 @@
         "tools": 1,
         "highRiskPaths": 0
       }
+    },
+    {
+      "id": "anthropic-provider-model",
+      "file": "src/claude.ts",
+      "content": [
+        "const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });",
+        "const result = await anthropic.messages.create({ model: 'claude-3-5-sonnet-latest', messages });"
+      ],
+      "expected": {
+        "models": 1,
+        "agents": 0,
+        "tools": 0,
+        "highRiskPaths": 0
+      }
+    },
+    {
+      "id": "mcp-filesystem-server",
+      "file": ".cursor/mcp.json",
+      "content": [
+        "{",
+        "  \"mcpServers\": {",
+        "    \"filesystem\": { \"command\": \"npx\", \"args\": [\"-y\", \"@modelcontextprotocol/server-filesystem\"] }",
+        "  }",
+        "}"
+      ],
+      "expected": {
+        "models": 0,
+        "agents": 0,
+        "tools": 0,
+        "highRiskPaths": 3
+      }
+    },
+    {
+      "id": "database-tool",
+      "file": "src/db-agent.ts",
+      "content": [
+        "export const agent = createAgent({ name: 'data-agent', tools: [queryTool] });",
+        "const queryTool = { name: 'query_database', execute: ({ query }) => db.query(query) };"
+      ],
+      "expected": {
+        "models": 0,
+        "agents": 1,
+        "tools": 1,
+        "highRiskPaths": 1
+      }
+    },
+    {
+      "id": "safe-provider-only",
+      "file": "src/provider.ts",
+      "content": [
+        "const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });"
+      ],
+      "expected": {
+        "models": 0,
+        "agents": 0,
+        "tools": 0,
+        "highRiskPaths": 0
+      }
     }
   ]
 }

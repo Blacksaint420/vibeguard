@@ -11,6 +11,7 @@ VibeGuard is local-first.
 - It masks detected secrets in output.
 - It handles unreadable files as scan warnings instead of crashing.
 - It uses optional OSV vulnerability lookup only when explicitly requested.
+- Optional vulnerability provider failures degrade to scan warnings by default; source, prompts, findings, AI BOM, graph data, and secrets are not uploaded.
 
 The tool is a pre-review safety layer, not a replacement for secure design review, tests, dependency auditing, or production security monitoring.
 

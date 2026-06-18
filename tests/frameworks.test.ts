@@ -151,6 +151,33 @@ test("AI scanner rules map to enterprise AI risk categories", () => {
   assert.equal(enrichFindingWithEnterpriseContext(technicalFinding("ai-model-trust-remote-code")).risk?.category, "AI supply chain");
 });
 
+test("expanded enterprise AI scanner rules have framework mappings", () => {
+  const ruleIds = [
+    "ai-output-json-without-schema-validation",
+    "ai-llm-call-without-timeout",
+    "ai-llm-call-without-rate-limit",
+    "ai-llm-call-without-cost-tracking",
+    "ai-prompt-template-interpolates-user-input",
+    "ai-system-prompt-logged",
+    "ai-rag-upsert-untrusted-content",
+    "ai-rag-client-controlled-filter",
+    "ai-mcp-config-dangerous-server",
+    "ai-tool-broad-input-schema",
+    "ai-model-revision-unpinned"
+  ];
+
+  for (const ruleId of ruleIds) {
+    const enriched = enrichFindingWithEnterpriseContext(technicalFinding(ruleId));
+
+    assert.equal(enriched.rule?.id, ruleId);
+    assert.equal(enriched.rule?.version, "2026.06.11");
+    assert.equal(enriched.rule?.stability, "stable");
+    assert.equal(enriched.rule?.scanner, "ai");
+    assert.equal(enriched.frameworks.length > 0, true);
+    assert.notEqual(enriched.risk?.category, "Unmapped technical finding");
+  }
+});
+
 test("agent capability graph rules have enterprise mappings", () => {
   const enriched = enrichFindingWithEnterpriseContext(createFinding({
     ruleId: "agent-capability-shell-without-approval",

@@ -127,6 +127,179 @@ const CONTEXT_BY_RULE: Record<string, RuleEnterpriseContextDefinition> = {
     },
     controlGaps: ["model provenance", "artifact pinning", "supply chain review"]
   },
+  "ai-output-json-without-schema-validation": aiSecurityContext(
+    "ai-output-json-without-schema-validation",
+    "LLM JSON output parsed without schema validation",
+    "AI output handling",
+    "high",
+    "high",
+    "high",
+    "engineering",
+    ["schema validation", "output handling", "structured outputs"],
+    [
+      frameworkMappingDefinition("owasp-llm-2025", "LLM05:2025", "Improper Output Handling"),
+      frameworkMappingDefinition("nist-ai-rmf", "MEASURE", "Analyze and assess AI risks"),
+      frameworkMappingDefinition("nist-ai-rmf", "MANAGE", "Prioritize and respond to AI risks"),
+      frameworkMappingDefinition("google-saif", "input-output-controls", "Input and output controls")
+    ]
+  ),
+  "ai-llm-call-without-timeout": aiSecurityContext(
+    "ai-llm-call-without-timeout",
+    "LLM call has no visible timeout or abort signal",
+    "AI resource consumption",
+    "medium",
+    "high",
+    "high",
+    "platform",
+    ["timeouts", "availability controls", "resource quotas"],
+    [
+      frameworkMappingDefinition("owasp-llm-2025", "LLM10:2025", "Unbounded Consumption"),
+      frameworkMappingDefinition("nist-ai-rmf", "MANAGE", "Prioritize and respond to AI risks"),
+      frameworkMappingDefinition("google-saif", "secure-by-default", "Secure-by-default deployment")
+    ]
+  ),
+  "ai-llm-call-without-rate-limit": aiSecurityContext(
+    "ai-llm-call-without-rate-limit",
+    "User-facing LLM endpoint has no visible rate limit or quota",
+    "AI resource consumption",
+    "medium",
+    "high",
+    "high",
+    "platform",
+    ["rate limiting", "quota enforcement", "abuse prevention"],
+    [
+      frameworkMappingDefinition("owasp-llm-2025", "LLM10:2025", "Unbounded Consumption"),
+      frameworkMappingDefinition("nist-ai-rmf", "MANAGE", "Prioritize and respond to AI risks"),
+      frameworkMappingDefinition("google-saif", "secure-by-default", "Secure-by-default deployment")
+    ]
+  ),
+  "ai-llm-call-without-cost-tracking": aiSecurityContext(
+    "ai-llm-call-without-cost-tracking",
+    "User-triggered LLM call lacks visible usage or cost tracking",
+    "AI resource consumption",
+    "medium",
+    "medium",
+    "medium",
+    "platform",
+    ["usage metering", "cost tracking", "quota enforcement"],
+    [
+      frameworkMappingDefinition("owasp-llm-2025", "LLM10:2025", "Unbounded Consumption"),
+      frameworkMappingDefinition("nist-ai-rmf", "MEASURE", "Analyze and assess AI risks"),
+      frameworkMappingDefinition("google-saif", "secure-by-default", "Secure-by-default deployment")
+    ]
+  ),
+  "ai-prompt-template-interpolates-user-input": aiSecurityContext(
+    "ai-prompt-template-interpolates-user-input",
+    "Prompt template interpolates user-controlled input",
+    "Prompt injection exposure",
+    "high",
+    "high",
+    "high",
+    "engineering",
+    ["prompt separation", "input delimiting", "instruction hierarchy"],
+    [
+      frameworkMappingDefinition("owasp-llm-2025", "LLM01:2025", "Prompt Injection"),
+      frameworkMappingDefinition("nist-ai-rmf", "MAP", "Map AI context and risks"),
+      frameworkMappingDefinition("mitre-atlas", "AML.T0051", "LLM Prompt Injection"),
+      frameworkMappingDefinition("google-saif", "input-output-controls", "Input and output controls")
+    ]
+  ),
+  "ai-system-prompt-logged": aiSecurityContext(
+    "ai-system-prompt-logged",
+    "System or developer prompt is logged",
+    "Prompt confidentiality",
+    "medium",
+    "high",
+    "high",
+    "security",
+    ["prompt confidentiality", "telemetry redaction", "sensitive data handling"],
+    [
+      frameworkMappingDefinition("owasp-llm-2025", "LLM02:2025", "Sensitive Information Disclosure"),
+      frameworkMappingDefinition("owasp-llm-2025", "LLM07:2025", "System Prompt Leakage"),
+      frameworkMappingDefinition("nist-ai-rmf", "MANAGE", "Prioritize and respond to AI risks"),
+      frameworkMappingDefinition("google-saif", "secure-secrets", "Secure secrets and credentials")
+    ]
+  ),
+  "ai-rag-upsert-untrusted-content": aiSecurityContext(
+    "ai-rag-upsert-untrusted-content",
+    "Untrusted content is inserted into a vector store",
+    "RAG data integrity",
+    "high",
+    "high",
+    "high",
+    "engineering",
+    ["content provenance", "moderation", "trusted ingestion"],
+    [
+      frameworkMappingDefinition("owasp-llm-2025", "LLM04:2025", "Data and Model Poisoning"),
+      frameworkMappingDefinition("nist-ai-rmf", "MAP", "Map AI context and risks"),
+      frameworkMappingDefinition("mitre-atlas", "AML.T0054", "LLM Data Leakage"),
+      frameworkMappingDefinition("google-saif", "input-output-controls", "Input and output controls")
+    ]
+  ),
+  "ai-rag-client-controlled-filter": aiSecurityContext(
+    "ai-rag-client-controlled-filter",
+    "RAG query uses client-controlled filter or namespace",
+    "RAG data exposure",
+    "high",
+    "high",
+    "high",
+    "engineering",
+    ["retrieval authorization", "tenant isolation", "server-side filters"],
+    [
+      frameworkMappingDefinition("owasp-llm-2025", "LLM08:2025", "Vector and Embedding Weaknesses"),
+      frameworkMappingDefinition("nist-ai-rmf", "MAP", "Map AI context and risks"),
+      frameworkMappingDefinition("mitre-atlas", "AML.T0054", "LLM Data Leakage"),
+      frameworkMappingDefinition("google-saif", "input-output-controls", "Input and output controls")
+    ]
+  ),
+  "ai-mcp-config-dangerous-server": aiSecurityContext(
+    "ai-mcp-config-dangerous-server",
+    "MCP config exposes dangerous server without scope metadata",
+    "Agentic AI excessive agency",
+    "high",
+    "critical",
+    "critical",
+    "engineering",
+    ["MCP scope", "tool approval", "runtime containment"],
+    [
+      frameworkMappingDefinition("owasp-llm-2025", "LLM06:2025", "Excessive Agency"),
+      frameworkMappingDefinition("nist-ai-rmf", "MANAGE", "Prioritize and respond to AI risks"),
+      frameworkMappingDefinition("mitre-atlas", "AML.T0051", "LLM Prompt Injection"),
+      frameworkMappingDefinition("google-saif", "input-output-controls", "Input and output controls")
+    ]
+  ),
+  "ai-tool-broad-input-schema": aiSecurityContext(
+    "ai-tool-broad-input-schema",
+    "Agent tool accepts broad free-form input",
+    "Agentic AI excessive agency",
+    "high",
+    "high",
+    "high",
+    "engineering",
+    ["tool schema constraints", "least privilege", "argument allowlisting"],
+    [
+      frameworkMappingDefinition("owasp-llm-2025", "LLM06:2025", "Excessive Agency"),
+      frameworkMappingDefinition("nist-ai-rmf", "MANAGE", "Prioritize and respond to AI risks"),
+      frameworkMappingDefinition("mitre-atlas", "AML.T0051", "LLM Prompt Injection"),
+      frameworkMappingDefinition("google-saif", "input-output-controls", "Input and output controls")
+    ]
+  ),
+  "ai-model-revision-unpinned": aiSecurityContext(
+    "ai-model-revision-unpinned",
+    "Model artifact revision is not pinned",
+    "AI supply chain",
+    "high",
+    "high",
+    "high",
+    "security",
+    ["model provenance", "artifact pinning", "supply chain review"],
+    [
+      frameworkMappingDefinition("owasp-llm-2025", "LLM03:2025", "Supply Chain"),
+      frameworkMappingDefinition("nist-ai-rmf", "GOVERN", "Govern AI risk management"),
+      frameworkMappingDefinition("mitre-atlas", "AML.T0010", "Acquire ML Artifacts"),
+      frameworkMappingDefinition("google-saif", "secure-supply-chain", "Secure supply chain")
+    ]
+  ),
   "agent-capability-shell-without-approval": agentCapabilityContext(
     "agent-capability-shell-without-approval",
     "Agent can reach shell execution",
@@ -187,6 +360,31 @@ function stableRule(id: string, name: string, scanner: RuleMetadata["scanner"]):
     version: BUILT_IN_RULE_VERSION,
     stability: "stable",
     scanner
+  };
+}
+
+function aiSecurityContext(
+  id: string,
+  name: string,
+  category: string,
+  likelihood: RuleEnterpriseContextDefinition["risk"]["likelihood"],
+  impact: RuleEnterpriseContextDefinition["risk"]["impact"],
+  severity: RuleEnterpriseContextDefinition["risk"]["severity"],
+  controlOwner: RuleEnterpriseContextDefinition["risk"]["controlOwner"],
+  controlGaps: string[],
+  frameworks: FrameworkMappingDefinition[]
+): RuleEnterpriseContextDefinition {
+  return {
+    rule: stableRule(id, name, "ai"),
+    frameworks,
+    risk: {
+      category,
+      likelihood,
+      impact,
+      severity,
+      controlOwner
+    },
+    controlGaps
   };
 }
 

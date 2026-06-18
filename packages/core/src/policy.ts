@@ -43,6 +43,9 @@ aiPrompts:
   enabled: true
 suppressions: []
 minConfidence: high
+coverage:
+  requireComplete: false
+  failOnUnreadable: false
 `;
 
 export function defaultPolicy(): Policy {
@@ -59,6 +62,10 @@ export function defaultPolicy(): Policy {
       requireExpiration: true
     },
     minConfidence: "high",
+    coverage: {
+      requireComplete: false,
+      failOnUnreadable: false
+    },
     aiPrompts: { enabled: true }
   };
 }
@@ -125,6 +132,10 @@ export function loadPolicyFromText(text: string): Policy {
     if (section === "suppressionPolicy" && trimmed.includes(":")) {
       assignSuppressionPolicyValue(policy, trimmed);
     }
+
+    if (section === "coverage" && trimmed.includes(":")) {
+      assignCoveragePolicyValue(policy, trimmed);
+    }
   }
 
   policy.enabledScanners = unique(policy.enabledScanners);
@@ -190,6 +201,17 @@ function assignSuppressionPolicyValue(policy: Policy, text: string): void {
   if (key === "requireReason") policy.suppressionPolicy.requireReason = value;
   if (key === "requireReviewer") policy.suppressionPolicy.requireReviewer = value;
   if (key === "requireExpiration") policy.suppressionPolicy.requireExpiration = value;
+}
+
+function assignCoveragePolicyValue(policy: Policy, text: string): void {
+  const [rawKey, ...rest] = text.split(":");
+  const key = rawKey.trim();
+  const rawValue = rest.join(":").trim();
+  const booleanValue = parseBoolean(rawValue);
+  if (key === "requireComplete" && booleanValue !== undefined) policy.coverage.requireComplete = booleanValue;
+  if (key === "failOnUnreadable" && booleanValue !== undefined) policy.coverage.failOnUnreadable = booleanValue;
+  if (key === "maxFiles" && Number.isInteger(Number(rawValue)) && Number(rawValue) > 0) policy.coverage.maxFiles = Number(rawValue);
+  if (key === "maxFileBytes" && Number.isInteger(Number(rawValue)) && Number(rawValue) > 0) policy.coverage.maxFileBytes = Number(rawValue);
 }
 
 function isValidSuppression(suppression: Suppression, suppressionPolicy: SuppressionPolicy): boolean {

@@ -44,7 +44,11 @@ test("AI BOM extracts providers, models, prompts, tools, agents, vector stores, 
   assert.equal(bom.summary.vectorStores, 1);
   assert.equal(bom.summary.mcpServers, 1);
   assert.equal(bom.providers[0].name, "openai");
+  assert.equal(bom.providers[0].evidenceStrength, "direct");
+  assert.equal(bom.providers[0].detectionMethod, "provider-syntax");
   assert.equal(bom.models[0].name, "gpt-4.1");
+  assert.equal(bom.agents[0].evidenceSource, "createAgent call");
+  assert.equal(bom.tools.find((tool) => tool.name === "searchTool")?.evidenceStrength, "same-file");
   assert.equal(bom.tools.some((tool) => tool.capabilities.includes("shell")), true);
   assert.equal(bom.mcpServers[0].name, "filesystem");
 });

@@ -2,9 +2,15 @@ import type { Severity, Vulnerability, VulnerabilityProvider } from "./types.ts"
 
 export type VulnerabilityProviderName = "null" | "mock" | "osv";
 
-export function createVulnerabilityProvider(name: VulnerabilityProviderName): VulnerabilityProvider {
+const OSV_QUERY_TIMEOUT_MS = 10_000;
+
+export type VulnerabilityProviderOptions = {
+  timeoutMs?: number;
+};
+
+export function createVulnerabilityProvider(name: VulnerabilityProviderName, options: VulnerabilityProviderOptions = {}): VulnerabilityProvider {
   if (name === "mock") return mockVulnerabilityProvider;
-  if (name === "osv") return osvVulnerabilityProvider;
+  if (name === "osv") return createOsvVulnerabilityProvider(options);
   return nullVulnerabilityProvider;
 }
 
@@ -29,38 +35,41 @@ export const mockVulnerabilityProvider: VulnerabilityProvider = {
   }
 };
 
-export const osvVulnerabilityProvider: VulnerabilityProvider = {
-  name: "osv",
-  async query(packageName: string, version?: string, ecosystem?: string) {
-    const response = await fetch("https://api.osv.dev/v1/query", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        package: {
-          name: packageName,
-          ecosystem: ecosystem ?? "npm"
-        },
-        version
-      })
-    });
+export function createOsvVulnerabilityProvider(options: VulnerabilityProviderOptions = {}): VulnerabilityProvider {
+  return {
+    name: "osv",
+    async query(packageName: string, version?: string, ecosystem?: string) {
+      const response = await fetch("https://api.osv.dev/v1/query", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        signal: AbortSignal.timeout(options.timeoutMs ?? OSV_QUERY_TIMEOUT_MS),
+        body: JSON.stringify({
+          package: {
+            name: packageName,
+            ecosystem: ecosystem ?? "npm"
+          },
+          ...(version ? { version } : {})
+        })
+      });
 
-    if (!response.ok) {
-      throw new Error(`OSV query failed for ${packageName}: HTTP ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`OSV query failed for ${packageName}: HTTP ${response.status}`);
+      }
+
+      const body = await response.json() as {
+        vulns?: Array<{ id?: string; summary?: string; database_specific?: { severity?: string } }>;
+      };
+
+      return (body.vulns ?? []).map((vuln): Vulnerability => ({
+        id: vuln.id ?? "OSV-UNKNOWN",
+        packageName,
+        installedVersion: version,
+        severity: normalizeSeverity(vuln.database_specific?.severity),
+        summary: vuln.summary ?? "OSV reported a vulnerability for this dependency."
+      }));
     }
-
-    const body = await response.json() as {
-      vulns?: Array<{ id?: string; summary?: string; database_specific?: { severity?: string } }>;
-    };
-
-    return (body.vulns ?? []).map((vuln): Vulnerability => ({
-      id: vuln.id ?? "OSV-UNKNOWN",
-      packageName,
-      installedVersion: version,
-      severity: normalizeSeverity(vuln.database_specific?.severity),
-      summary: vuln.summary ?? "OSV reported a vulnerability for this dependency."
-    }));
-  }
-};
+  };
+}
 
 function normalizeSeverity(value: string | undefined): Severity {
   const normalized = value?.toLowerCase();

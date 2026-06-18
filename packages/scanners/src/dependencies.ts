@@ -1,4 +1,4 @@
-import type { DiffFile, Finding, VulnerabilityProvider } from "../../core/src/types.ts";
+import type { DiffFile, Finding, ScanWarning, VulnerabilityProvider } from "../../core/src/types.ts";
 import { owaspCategory } from "../../core/src/owasp.ts";
 import { scannerFinding } from "./utils.ts";
 
@@ -111,31 +111,71 @@ function scanLockfile(file: DiffFile, findings: Finding[]): void {
   }
 }
 
-export async function runVulnerabilityScanner(files: DiffFile[], provider: VulnerabilityProvider): Promise<Finding[]> {
+export type VulnerabilityScannerOptions = {
+  failMode?: "warn" | "fail";
+  concurrency?: number;
+};
+
+export async function runVulnerabilityScanner(
+  files: DiffFile[],
+  provider: VulnerabilityProvider,
+  options: VulnerabilityScannerOptions = {}
+): Promise<{ findings: Finding[]; warnings: ScanWarning[]; source: string; durationMs: number }> {
+  const started = Date.now();
   const findings: Finding[] = [];
-  for (const dependency of extractDependencies(files)) {
-    const vulnerabilities = await provider.query(dependency.name, cleanVersion(dependency.version), dependency.ecosystem);
-    for (const vulnerability of vulnerabilities) {
-      findings.push(scannerFinding({
-        ruleId: "dep-vulnerable-package",
-        title: "Vulnerable dependency",
-        severity: vulnerability.severity,
-        confidence: "high",
-        riskScore: vulnerability.severity === "critical" ? 98 : vulnerability.severity === "high" ? 86 : 70,
-        file: dependency.file,
-        line: dependency.line,
-        snippet: `${dependency.name}@${dependency.version}`,
-        owasp: owaspCategory("LLM03:2025"),
-        evidence: `Dependency vulnerability provider reported ${vulnerability.id} for ${dependency.name}@${dependency.version}.`,
-        attackPath: "Application installs vulnerable dependency -> attacker reaches vulnerable code path -> dependency exploit executes.",
-        impact: "Known vulnerable packages can compromise confidentiality, integrity, or availability of the LLM application.",
-        why: `${vulnerability.id}: ${vulnerability.summary}`,
-        suggestedFix: "Upgrade to a non-vulnerable version or remove the dependency.",
-        testSuggestion: "Run dependency and integration tests after upgrading the package."
-      }));
+  const warnings: ScanWarning[] = [];
+  const cache = new Map<string, Awaited<ReturnType<VulnerabilityProvider["query"]>>>();
+  const dependencies = extractDependencies(files);
+  const concurrency = Math.max(1, options.concurrency ?? 4);
+
+  for (let index = 0; index < dependencies.length; index += concurrency) {
+    const batch = dependencies.slice(index, index + concurrency);
+    const results = await Promise.all(batch.map(async (dependency) => {
+      const version = cleanVersion(dependency.version);
+      const cacheKey = `${dependency.ecosystem}\0${dependency.name}\0${version ?? ""}`;
+      try {
+        const vulnerabilities = cache.get(cacheKey) ?? await provider.query(dependency.name, version, dependency.ecosystem);
+        cache.set(cacheKey, vulnerabilities);
+        return { dependency, vulnerabilities };
+      } catch (error) {
+        if (options.failMode === "fail") throw error;
+        warnings.push({
+          code: "vulnerability-provider",
+          path: dependency.file,
+          message: `${provider.name} vulnerability lookup failed for ${dependency.name}@${dependency.version}: ${errorMessage(error)}`
+        });
+        return { dependency, vulnerabilities: [] };
+      }
+    }));
+
+    for (const { dependency, vulnerabilities } of results) {
+      for (const vulnerability of vulnerabilities) {
+        findings.push(scannerFinding({
+          ruleId: "dep-vulnerable-package",
+          title: "Vulnerable dependency",
+          severity: vulnerability.severity,
+          confidence: "high",
+          riskScore: vulnerability.severity === "critical" ? 98 : vulnerability.severity === "high" ? 86 : 70,
+          file: dependency.file,
+          line: dependency.line,
+          snippet: `${dependency.name}@${dependency.version}`,
+          owasp: owaspCategory("LLM03:2025"),
+          evidence: `Dependency vulnerability provider reported ${vulnerability.id} for ${dependency.name}@${dependency.version}.`,
+          attackPath: "Application installs vulnerable dependency -> attacker reaches vulnerable code path -> dependency exploit executes.",
+          impact: "Known vulnerable packages can compromise confidentiality, integrity, or availability of the LLM application.",
+          why: `${vulnerability.id}: ${vulnerability.summary}`,
+          suggestedFix: "Upgrade to a non-vulnerable version or remove the dependency.",
+          testSuggestion: "Run dependency and integration tests after upgrading the package."
+        }));
+      }
     }
   }
-  return findings.map((finding) => ({ ...finding, scanner: "dependencies" }));
+  return {
+    findings: findings.map((finding) => ({ ...finding, scanner: "dependencies" })),
+    warnings,
+    source: provider.name,
+    durationMs: Date.now() - started
+  };
 }
 
 export function extractDependencies(files: DiffFile[]): Array<{ name: string; version: string; ecosystem: string; file: string; line: number }> {
@@ -392,6 +432,10 @@ function uniqueDependencies(
     seen.add(key);
     return true;
   });
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function isManifest(path: string): boolean {

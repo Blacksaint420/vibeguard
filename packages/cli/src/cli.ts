@@ -1,5 +1,6 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { createInterface } from "node:readline/promises";
 
 import { baselineFindingIds, createBaseline, DEFAULT_BASELINE_PATH, loadBaseline, serializeBaseline } from "../../core/src/baseline.ts";
 import { buildAiBom, buildAgentCapabilityGraph } from "../../core/src/aibom/index.ts";
@@ -14,9 +15,10 @@ import {
 } from "../../core/src/policy.ts";
 import { collectRepositoryFiles } from "../../core/src/repository.ts";
 import type { Confidence, DiffFile, OutputFormat } from "../../core/src/types.ts";
-import { renderFindings } from "../../output/src/formatters.ts";
+import { renderAgentGraphConsole, renderAiBomConsole, renderFindings, renderRiskConsole } from "../../output/src/formatters.ts";
 
 export type ParsedCommand =
+  | { name: "interactive"; targetPath?: string }
   | { name: "init" }
   | { name: "doctor" }
   | { name: "explain"; id: string }
@@ -40,6 +42,12 @@ type ScanCommandOptions = {
   maxFindings?: number;
   minConfidence?: Confidence;
   vulnProvider: "null" | "mock" | "osv";
+  vulnProviderFailMode: "warn" | "fail";
+  vulnProviderTimeoutMs?: number;
+  vulnProviderConcurrency?: number;
+  strictCoverage: boolean;
+  maxFiles?: number;
+  maxFileBytes?: number;
 };
 
 type InventoryCommandOptions = {
@@ -52,6 +60,8 @@ export type CliEnvironment = {
   cwd?: string;
   stdout?: (text: string) => void;
   stderr?: (text: string) => void;
+  prompt?: (question: string) => Promise<string>;
+  isTty?: boolean;
   collectDiff?: (options: { cwd: string; staged?: boolean; base?: string }) => string;
   collectRepositoryFiles?: (targetPath: string) => DiffFile[];
 };
@@ -61,8 +71,11 @@ export type CliResult = {
 };
 
 export function parseArgs(argv: string[]): ParsedCommand {
-  const [command = "help", ...rest] = argv;
+  const [command = "interactive", ...rest] = argv;
 
+  if (command === "interactive" || command === "menu" || command === "framework") {
+    return { name: "interactive", ...parseInteractiveOptions(rest, command) };
+  }
   if (command === "init") return { name: "init" };
   if (command === "doctor") return { name: "doctor" };
   if (command === "explain") {
@@ -83,10 +96,10 @@ export function parseArgs(argv: string[]): ParsedCommand {
     return { name: "baseline", ...options, output: options.output ?? DEFAULT_BASELINE_PATH };
   }
   if (command === "aibom") {
-    return { name: "aibom", ...parseInventoryOptions(rest, "aibom", "aibom-json") };
+    return { name: "aibom", ...parseInventoryOptions(rest, "aibom", "table") };
   }
   if (command === "graph") {
-    return { name: "graph", ...parseInventoryOptions(rest, "graph", "graph-json") };
+    return { name: "graph", ...parseInventoryOptions(rest, "graph", "table") };
   }
   if (command === "suppress") {
     const id = rest[0];
@@ -141,6 +154,10 @@ export async function runCli(argv: string[], environment: CliEnvironment = {}): 
 
   try {
     const command = parseArgs(argv);
+
+    if (command.name === "interactive") {
+      return runInteractiveFramework(command, environment, cwd, stdout);
+    }
 
     if (command.name === "help") {
       stdout(helpText());
@@ -202,6 +219,10 @@ export async function runCli(argv: string[], environment: CliEnvironment = {}): 
     }
 
     const result = await runScanCommand(command, environment, cwd);
+    if (command.strictCoverage && result.coverage.coverageStatus !== "complete") {
+      stderr(`Coverage incomplete: ${result.coverage.coverageStatus} (${result.coverage.coveragePercent}% scanned)\n`);
+      return { exitCode: 2 };
+    }
 
     if (command.name === "baseline") {
       const outputPath = writeOutputFile(cwd, command.output, serializeBaseline(createBaseline(result)));
@@ -212,7 +233,7 @@ export async function runCli(argv: string[], environment: CliEnvironment = {}): 
     const rendered = `${renderFindings(result, command.format)}${command.format === "table" ? "" : "\n"}`;
     if (command.output) {
       const outputPath = writeOutputFile(cwd, command.output, rendered);
-      stdout(`Wrote ${outputPath}\n`);
+      stdout(renderWriteSummary(command.name === "report" ? "Report Export" : "Output Export", outputPath, command.format));
     } else {
       stdout(rendered);
     }
@@ -226,12 +247,37 @@ export async function runCli(argv: string[], environment: CliEnvironment = {}): 
 function renderDoctor(cwd: string): string {
   const configPath = join(cwd, "vibeguard.yml");
   return [
+    "VIBEGUARD / LOCAL RUNTIME CHECK",
+    "===============================",
     "VibeGuard doctor",
+    "",
+    "Runtime",
+    "-------",
     `Node: ${process.version}`,
     `Config: ${existsSync(configPath) ? configPath : "default policy (vibeguard.yml not found)"}`,
+    "",
+    "Privacy Posture",
+    "---------------",
     "Mode: local-first",
     "No source upload: enabled",
     "Network vulnerability provider: null/offline",
+    "",
+    "Operational Guidance",
+    "--------------------",
+    "- Use --vuln-provider osv only when dependency name/version lookup is approved.",
+    "- Use --baseline for accepted legacy findings so new risk is easier to review.",
+    ""
+  ].join("\n");
+}
+
+function renderWriteSummary(moduleName: string, outputPath: string, format: OutputFormat): string {
+  return [
+    `VIBEGUARD / ${moduleName.toUpperCase()}`,
+    "=".repeat(`VIBEGUARD / ${moduleName.toUpperCase()}`.length),
+    `Status: written`,
+    `Format: ${format}`,
+    `Path: ${outputPath}`,
+    `Wrote ${outputPath}`,
     ""
   ].join("\n");
 }
@@ -241,6 +287,8 @@ function helpText(): string {
     "VibeGuard",
     "",
     "Usage:",
+    "  vibeguard",
+    "  vibeguard interactive [--target <path>]",
     "  vibeguard init",
     "  vibeguard check [path] [--format table|json|sarif|markdown|html|risk-json]",
     "  vibeguard check --staged [--format table|json|sarif|markdown|html|risk-json]",
@@ -249,8 +297,8 @@ function helpText(): string {
     "  vibeguard check [--output report.json]",
     "  vibeguard check [--quiet] [--max-findings <n>] [--min-confidence low|medium|high]",
     "  vibeguard check [--vuln-provider null|mock|osv]",
-    "  vibeguard aibom [path] [--format aibom-json|aibom-markdown] [--output vibeguard-aibom.json]",
-    "  vibeguard graph [path] [--format graph-json|graph-markdown] [--output vibeguard-agent-graph.json]",
+    "  vibeguard aibom [path] [--format table|aibom-json|aibom-markdown] [--output vibeguard-aibom.json]",
+    "  vibeguard graph [path] [--format table|graph-json|graph-markdown] [--output vibeguard-agent-graph.json]",
     "  vibeguard baseline [path] [--output vibeguard-baseline.json]",
     "  vibeguard report [path] [--format json|sarif|markdown|html|risk-json] [--output report.html]",
     "  vibeguard suppress <finding_id_or_rule_id> [--file <path>] [--line <n>] [--reason <text>] [--reviewer <email>] [--expires <YYYY-MM-DD>]",
@@ -258,6 +306,298 @@ function helpText(): string {
     "  vibeguard doctor",
     ""
   ].join("\n");
+}
+
+async function runInteractiveFramework(
+  command: Extract<ParsedCommand, { name: "interactive" }>,
+  environment: CliEnvironment,
+  cwd: string,
+  stdout: (text: string) => void
+): Promise<CliResult> {
+  const canPrompt = environment.prompt ? true : environment.isTty ?? Boolean(process.stdin.isTTY);
+  const defaultTarget = resolve(cwd, command.targetPath ?? process.env.VIBEGUARD_TARGET ?? cwd);
+
+  if (!canPrompt) {
+    stdout([
+      frameworkHeader(),
+      "Interactive mode needs a terminal input stream.",
+      "",
+      "Run one of these commands instead:",
+      `  vibeguard interactive --target "${defaultTarget}"`,
+      `  vibeguard check "${defaultTarget}" --format table`,
+      `  vibeguard aibom "${defaultTarget}" --format aibom-markdown`,
+      "",
+      helpText()
+    ].join("\n"));
+    return { exitCode: 0 };
+  }
+
+  const readline = environment.prompt
+    ? undefined
+    : createInterface({ input: process.stdin, output: process.stdout });
+  const ask = environment.prompt ?? ((question: string) => readline!.question(question));
+  let finalExitCode: 0 | 1 = 0;
+
+  try {
+    stdout(`${frameworkHeader()}\n`);
+    stdout("Type help for commands, set-target to change scope, or exit to quit.\n\n");
+    let currentTarget = await chooseInteractiveTarget(defaultTarget, cwd, ask);
+
+    while (true) {
+      stdout(interactiveMenu(currentTarget));
+      const choice = normalizeChoice(await ask("vibeguard > "), "help");
+      const action = interactiveAction(choice);
+      if (action === "exit") {
+        stdout("Exiting VibeGuard.\n");
+        return { exitCode: finalExitCode };
+      }
+
+      if (action === "help") {
+        continue;
+      }
+
+      if (action === "target") {
+        currentTarget = await chooseInteractiveTarget(currentTarget, cwd, ask);
+        stdout(`Target set to ${currentTarget}\n`);
+        continue;
+      }
+
+      if (action === "scan") {
+        const scopePath = await chooseInteractiveScope(currentTarget, cwd, ask);
+        const minConfidence = await chooseInteractiveConfidence(ask);
+        const maxFindings = await chooseMaxFindings(ask);
+        stdout(renderRunIntent("Developer security scan", scopePath, [
+          "Runs code, secret, dependency, Docker, workflow, sensitive-file, and AI rules.",
+          "Blocks only findings that match the active policy."
+        ]));
+        const result = await runInteractiveCheck(scopePath, environment, cwd, { format: "table", minConfidence, maxFindings });
+        stdout(renderFindings(result, "table"));
+        if (result.summary.blocking > 0) finalExitCode = 1;
+      } else if (action === "risk") {
+        const scopePath = await chooseInteractiveScope(currentTarget, cwd, ask);
+        const maxFindings = await chooseMaxFindings(ask);
+        stdout(renderRunIntent("GRC risk briefing", scopePath, [
+          "Groups technical findings into risk categories and framework mappings.",
+          "Use risk-json when you need machine-readable evidence for GRC workflows."
+        ]));
+        const result = await runInteractiveCheck(scopePath, environment, cwd, { format: "markdown", maxFindings });
+        stdout(renderRiskConsole(result));
+        if (result.summary.blocking > 0) finalExitCode = 1;
+      } else if (action === "aibom") {
+        const scopePath = await chooseInteractiveScope(currentTarget, cwd, ask);
+        stdout(renderRunIntent("AI Bill of Materials", scopePath, [
+          "Inventories AI providers, models, prompts, agents, tools, vector stores, MCP servers, and data stores.",
+          "Use this to understand what AI assets exist before reviewing risk."
+        ]));
+        const bom = buildAiBom(collectInteractiveFiles(scopePath, environment), { targetPath: scopePath });
+        stdout(`${renderAiBomConsole(bom)}\n`);
+      } else if (action === "graph") {
+        const scopePath = await chooseInteractiveScope(currentTarget, cwd, ask);
+        stdout(renderRunIntent("Agent capability graph", scopePath, [
+          "Builds an asset graph from AI BOM data and highlights high-risk capability paths.",
+          "Useful for excessive agency, shell access, filesystem access, database access, and secret access review."
+        ]));
+        const bom = buildAiBom(collectInteractiveFiles(scopePath, environment), { targetPath: scopePath });
+        stdout(`${renderAgentGraphConsole(buildAgentCapabilityGraph(bom))}\n`);
+      } else if (action === "full") {
+        const scopePath = await chooseInteractiveScope(currentTarget, cwd, ask);
+        const maxFindings = await chooseMaxFindings(ask);
+        stdout(renderRunIntent("Full VibeGuard review", scopePath, [
+          "Runs the security scan, AI BOM, and agent capability graph together.",
+          "This is the best single option when you are testing the framework manually."
+        ]));
+        const result = await runInteractiveCheck(scopePath, environment, cwd, { format: "table", maxFindings });
+        stdout(renderFindings(result, "table"));
+        stdout(`${renderAiBomConsole(result.aiBom!)}\n`);
+        stdout(`${renderAgentGraphConsole(result.agentGraph!)}\n`);
+        if (result.summary.blocking > 0) finalExitCode = 1;
+      } else if (action === "report") {
+        const scopePath = await chooseInteractiveScope(currentTarget, cwd, ask);
+        const outputPath = normalizeChoice(await ask("Report output path [vibeguard-report.html]: "), "vibeguard-report.html");
+        stdout(renderRunIntent("HTML report", scopePath, [
+          "Writes a shareable report with findings, next actions, OWASP mapping, and GRC mapping."
+        ]));
+        const result = await runInteractiveCheck(scopePath, environment, cwd, { format: "html" });
+        const written = writeOutputFile(cwd, outputPath, renderFindings(result, "html"));
+        stdout(renderWriteSummary("Report Export", written, "html"));
+        if (result.summary.blocking > 0) finalExitCode = 1;
+      } else if (action === "explain") {
+        const ruleId = normalizeChoice(await ask("Rule ID to explain [ai-model-trust-remote-code]: "), "ai-model-trust-remote-code");
+        const explanation = explainRule(ruleId);
+        stdout(explanation ? `${explanation}\n` : `No explanation found for ${ruleId}\n`);
+      } else if (action === "doctor") {
+        stdout(renderDoctor(cwd));
+      } else {
+        stdout(`Unknown option: ${choice}\n`);
+      }
+    }
+  } finally {
+    readline?.close();
+  }
+}
+
+function frameworkHeader(): string {
+  return [
+    "VIBEGUARD / COMMAND CENTER",
+    "==========================",
+    "VibeGuard Framework",
+    "AI security CLI framework for developer, security, and GRC workflows."
+  ].join("\n");
+}
+
+function interactiveMenu(defaultTarget: string): string {
+  return [
+    "Session",
+    "-------",
+    `Target: ${truncateMiddle(defaultTarget, 72)}`,
+    "",
+    "Modules",
+    "-------",
+    "1  scan        Security scan: findings, merge decision, fixes",
+    "2  risk        GRC risk brief: categories, controls, frameworks",
+    "3  aibom       AI inventory: providers, models, prompts, tools",
+    "4  graph       Agent access graph: reachable capabilities",
+    "5  full        Full review: scan + AI BOM + graph",
+    "6  report      HTML report export",
+    "7  explain     Rule brief and framework mappings",
+    "8  doctor      Local runtime and privacy posture",
+    "0  set-target  Change application target",
+    "9  exit        Quit",
+    ""
+  ].join("\n");
+}
+
+function interactiveAction(choice: string): string {
+  const normalized = choice.trim().toLowerCase();
+  const aliases: Record<string, string> = {
+    "0": "target",
+    "set-target": "target",
+    target: "target",
+    use: "target",
+    "1": "scan",
+    scan: "scan",
+    check: "scan",
+    "2": "risk",
+    risk: "risk",
+    grc: "risk",
+    "3": "aibom",
+    aibom: "aibom",
+    bom: "aibom",
+    "4": "graph",
+    graph: "graph",
+    "5": "full",
+    full: "full",
+    review: "full",
+    "6": "report",
+    report: "report",
+    "7": "explain",
+    explain: "explain",
+    "8": "doctor",
+    doctor: "doctor",
+    "9": "exit",
+    exit: "exit",
+    quit: "exit",
+    q: "exit",
+    help: "help",
+    "?": "help"
+  };
+  return aliases[normalized] ?? normalized;
+}
+
+function truncateMiddle(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  const half = Math.floor((maxLength - 3) / 2);
+  return `${value.slice(0, half)}...${value.slice(value.length - (maxLength - 3 - half))}`;
+}
+
+function renderRunIntent(title: string, targetPath: string, details: string[]): string {
+  return [
+    "",
+    `VIBEGUARD / ${title.toUpperCase()}`,
+    "=".repeat(`VIBEGUARD / ${title.toUpperCase()}`.length),
+    `Target: ${targetPath}`,
+    "",
+    "Run Plan",
+    "--------",
+    ...details.map((detail) => `- ${detail}`),
+    ""
+  ].join("\n");
+}
+
+async function chooseInteractiveTarget(
+  defaultTarget: string,
+  cwd: string,
+  ask: (question: string) => Promise<string>
+): Promise<string> {
+  const answer = normalizeChoice(await ask(`Target path [${defaultTarget}]: `), defaultTarget);
+  return resolve(cwd, answer);
+}
+
+async function chooseInteractiveScope(
+  targetPath: string,
+  cwd: string,
+  ask: (question: string) => Promise<string>
+): Promise<string> {
+  const srcPath = join(targetPath, "src");
+  const serverPath = join(targetPath, "server");
+  const defaultScope = existsSync(srcPath) ? "1" : "3";
+  const choice = normalizeChoice(await ask([
+    "Scope:",
+    existsSync(srcPath) ? `  1. App source (${srcPath})` : "  1. App source (not found, falls back to target)",
+    existsSync(serverPath) ? `  2. Server (${serverPath})` : "  2. Server (not found, falls back to target)",
+    `  3. Full target (${targetPath})`,
+    "  4. Custom path",
+    `Select scope [${defaultScope}]: `
+  ].join("\n")), defaultScope);
+
+  if (choice === "1") return existsSync(srcPath) ? srcPath : targetPath;
+  if (choice === "2") return existsSync(serverPath) ? serverPath : targetPath;
+  if (choice === "4") return resolve(cwd, normalizeChoice(await ask("Custom path: "), targetPath));
+  return targetPath;
+}
+
+async function chooseInteractiveConfidence(ask: (question: string) => Promise<string>): Promise<Confidence | undefined> {
+  const choice = normalizeChoice(await ask("Minimum confidence: 1=high 2=medium 3=low [1]: "), "1");
+  if (choice === "2" || choice.toLowerCase() === "medium") return "medium";
+  if (choice === "3" || choice.toLowerCase() === "low") return "low";
+  return "high";
+}
+
+async function chooseMaxFindings(ask: (question: string) => Promise<string>): Promise<number> {
+  const value = normalizeChoice(await ask("Max findings to display [25]: "), "25");
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 25;
+}
+
+function normalizeChoice(value: string, fallback: string): string {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : fallback;
+}
+
+function collectInteractiveFiles(targetPath: string, environment: CliEnvironment): DiffFile[] {
+  return environment.collectRepositoryFiles
+    ? environment.collectRepositoryFiles(targetPath)
+    : collectRepositoryFiles(targetPath);
+}
+
+async function runInteractiveCheck(
+  targetPath: string,
+  environment: CliEnvironment,
+  cwd: string,
+  options: Pick<ScanCommandOptions, "format" | "maxFindings" | "minConfidence">
+) {
+  const repositoryFiles = collectInteractiveFiles(targetPath, environment);
+  return runCheck({
+    cwd,
+    targetPath,
+    repositoryFiles,
+    format: options.format,
+    maxFindings: options.maxFindings,
+    minConfidence: options.minConfidence,
+    strictCoverage: false,
+    vulnProvider: "null",
+    vulnProviderFailMode: "warn"
+  });
 }
 
 function isOutputFormat(value: string | undefined): value is OutputFormat {
@@ -290,7 +630,12 @@ async function runDiffCheck(
     maxFindings: command.maxFindings,
     minConfidence: command.minConfidence,
     baselineFindingIds: loadBaselineIds(cwd, command.baseline),
-    vulnProvider: command.vulnProvider
+    vulnProvider: command.vulnProvider,
+    vulnProviderFailMode: command.vulnProviderFailMode,
+    vulnProviderTimeoutMs: command.vulnProviderTimeoutMs,
+    vulnProviderConcurrency: command.vulnProviderConcurrency,
+    maxFiles: command.maxFiles,
+    maxFileBytes: command.maxFileBytes
   });
 }
 
@@ -300,9 +645,7 @@ async function runRepositoryCheck(
   cwd: string
 ) {
   const targetPath = command.targetPath ? resolve(cwd, command.targetPath) : cwd;
-  const repositoryFiles = environment.collectRepositoryFiles
-    ? environment.collectRepositoryFiles(targetPath)
-    : collectRepositoryFiles(targetPath);
+  const repositoryFiles = environment.collectRepositoryFiles ? environment.collectRepositoryFiles(targetPath) : undefined;
   return runCheck({
     cwd,
     targetPath,
@@ -311,7 +654,12 @@ async function runRepositoryCheck(
     maxFindings: command.maxFindings,
     minConfidence: command.minConfidence,
     baselineFindingIds: loadBaselineIds(cwd, command.baseline),
-    vulnProvider: command.vulnProvider
+    vulnProvider: command.vulnProvider,
+    vulnProviderFailMode: command.vulnProviderFailMode,
+    vulnProviderTimeoutMs: command.vulnProviderTimeoutMs,
+    vulnProviderConcurrency: command.vulnProviderConcurrency,
+    maxFiles: command.maxFiles,
+    maxFileBytes: command.maxFileBytes
   });
 }
 
@@ -323,6 +671,24 @@ async function runScanCommand(
   return command.staged || command.base
     ? runDiffCheck(command, environment, cwd)
     : runRepositoryCheck(command, environment, cwd);
+}
+
+function parseInteractiveOptions(rest: string[], commandName: string): { targetPath?: string } {
+  let targetPath: string | undefined;
+
+  for (let index = 0; index < rest.length; index += 1) {
+    const arg = rest[index];
+    if (arg === "--target") {
+      targetPath = requiredValue(rest[index + 1], "--target");
+      index += 1;
+    } else if (!arg.startsWith("-") && !targetPath) {
+      targetPath = arg;
+    } else {
+      throw new Error(`Unknown ${commandName} option: ${arg}`);
+    }
+  }
+
+  return { targetPath };
 }
 
 function parseScanOptions(rest: string[], commandName: string, defaultFormat: OutputFormat): ScanCommandOptions {
@@ -337,6 +703,12 @@ function parseScanOptions(rest: string[], commandName: string, defaultFormat: Ou
   let maxFindings: number | undefined;
   let minConfidence: Confidence | undefined;
   let vulnProvider: "null" | "mock" | "osv" = "null";
+  let vulnProviderFailMode: "warn" | "fail" = "warn";
+  let vulnProviderTimeoutMs: number | undefined;
+  let vulnProviderConcurrency: number | undefined;
+  let strictCoverage = false;
+  let maxFiles: number | undefined;
+  let maxFileBytes: number | undefined;
 
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
@@ -373,6 +745,25 @@ function parseScanOptions(rest: string[], commandName: string, defaultFormat: Ou
       if (!isVulnProvider(value)) throw new Error("Vulnerability provider must be null, mock, or osv");
       vulnProvider = value;
       index += 1;
+    } else if (arg === "--vuln-provider-fail-mode") {
+      const value = rest[index + 1];
+      if (value !== "warn" && value !== "fail") throw new Error("Vulnerability provider fail mode must be warn or fail");
+      vulnProviderFailMode = value;
+      index += 1;
+    } else if (arg === "--vuln-provider-timeout-ms") {
+      vulnProviderTimeoutMs = parsePositiveInteger(rest[index + 1], "--vuln-provider-timeout-ms");
+      index += 1;
+    } else if (arg === "--vuln-provider-concurrency") {
+      vulnProviderConcurrency = parsePositiveInteger(rest[index + 1], "--vuln-provider-concurrency");
+      index += 1;
+    } else if (arg === "--strict-coverage") {
+      strictCoverage = true;
+    } else if (arg === "--max-files") {
+      maxFiles = parsePositiveInteger(rest[index + 1], "--max-files");
+      index += 1;
+    } else if (arg === "--max-file-bytes") {
+      maxFileBytes = parsePositiveInteger(rest[index + 1], "--max-file-bytes");
+      index += 1;
     } else if (!arg.startsWith("-") && !targetPath) {
       targetPath = arg;
     } else {
@@ -384,7 +775,25 @@ function parseScanOptions(rest: string[], commandName: string, defaultFormat: Ou
     throw new Error("A repository path cannot be combined with --staged or --base");
   }
 
-  return { staged, base, targetPath, format, quiet, noColor, output, baseline, maxFindings, minConfidence, vulnProvider };
+  return {
+    staged,
+    base,
+    targetPath,
+    format,
+    quiet,
+    noColor,
+    output,
+    baseline,
+    maxFindings,
+    minConfidence,
+    vulnProvider,
+    vulnProviderFailMode,
+    vulnProviderTimeoutMs,
+    vulnProviderConcurrency,
+    strictCoverage,
+    maxFiles,
+    maxFileBytes
+  };
 }
 
 function parseInventoryOptions(rest: string[], commandName: string, defaultFormat: OutputFormat): InventoryCommandOptions {
@@ -433,7 +842,7 @@ function isVulnProvider(value: string | undefined): value is "null" | "mock" | "
 
 function loadBaselineIds(cwd: string, baselinePath: string | undefined): string[] | undefined {
   if (!baselinePath) return undefined;
-  return baselineFindingIds(loadBaseline(resolve(cwd, baselinePath)));
+  return baselineFindingIds(loadBaseline(resolveCwdPath(cwd, baselinePath, "--baseline")));
 }
 
 function defaultReportPath(format: OutputFormat): string {
@@ -442,14 +851,15 @@ function defaultReportPath(format: OutputFormat): string {
 }
 
 function writeOutputFile(cwd: string, outputPath: string, content: string): string {
-  const resolvedPath = resolve(cwd, outputPath);
+  const resolvedPath = resolveCwdPath(cwd, outputPath, "--output");
+  mkdirSync(dirname(resolvedPath), { recursive: true });
   writeFileSync(resolvedPath, content);
   return outputPath;
 }
 
 function appendSuppression(command: Extract<ParsedCommand, { name: "suppress" }>, cwd: string): string {
   const outputPath = command.config ?? "vibeguard.yml";
-  const resolvedPath = resolve(cwd, outputPath);
+  const resolvedPath = resolveCwdPath(cwd, outputPath, "--config");
   const existing = existsSync(resolvedPath) ? readFileSync(resolvedPath, "utf8") : DEFAULT_POLICY_TEXT;
   validateSuppressionCommand(command, existing);
   writeFileSync(resolvedPath, addSuppression(existing, command));
@@ -501,4 +911,18 @@ function addSuppression(text: string, command: Extract<ParsedCommand, { name: "s
 function yamlScalar(value: string): string {
   if (/^[A-Za-z0-9_./: -]+$/.test(value) && !value.includes("#")) return value;
   return JSON.stringify(value);
+}
+
+function resolveCwdPath(cwd: string, requestedPath: string, flag: string): string {
+  const root = resolve(cwd);
+  const resolvedPath = resolve(root, requestedPath);
+  if (!isPathInside(root, resolvedPath)) {
+    throw new Error(`${flag} must stay inside the working directory`);
+  }
+  return resolvedPath;
+}
+
+function isPathInside(root: string, path: string): boolean {
+  const candidate = relative(root, path);
+  return candidate === "" || (!candidate.startsWith("..") && !isAbsolute(candidate));
 }

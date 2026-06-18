@@ -4,6 +4,57 @@
   "title": "VibeGuard Agent Capability Graph",
   "type": "object",
   "required": ["tool", "schemaVersion", "generatedAt", "targetPath", "summary", "nodes", "edges", "risks"],
+  "$defs": {
+    "evidenceStrength": {
+      "type": "string",
+      "enum": ["direct", "same-file", "same-module", "repository-inferred", "unknown"]
+    },
+    "relatedLocation": {
+      "type": "object",
+      "required": ["file", "line"],
+      "properties": {
+        "file": { "type": "string" },
+        "line": { "type": "number" },
+        "label": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "edge": {
+      "type": "object",
+      "required": ["from", "to", "relation", "evidenceStrength", "evidenceSource", "detectionMethod"],
+      "properties": {
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "relation": { "type": "string" },
+        "capability": { "type": "string" },
+        "evidenceStrength": { "$ref": "#/$defs/evidenceStrength" },
+        "evidenceSource": { "type": "string" },
+        "detectionMethod": { "type": "string" },
+        "relatedLocations": { "type": "array", "items": { "$ref": "#/$defs/relatedLocation" } }
+      },
+      "additionalProperties": true
+    },
+    "risk": {
+      "type": "object",
+      "required": ["ruleId", "title", "severity", "assetId", "capability", "path", "evidenceStrength", "evidenceSource", "detectionMethod", "evidence", "suggestedFix"],
+      "properties": {
+        "ruleId": { "type": "string" },
+        "title": { "type": "string" },
+        "severity": { "type": "string" },
+        "agentId": { "type": "string" },
+        "assetId": { "type": "string" },
+        "capability": { "type": "string" },
+        "path": { "type": "array", "items": { "type": "string" } },
+        "evidenceStrength": { "$ref": "#/$defs/evidenceStrength" },
+        "evidenceSource": { "type": "string" },
+        "detectionMethod": { "type": "string" },
+        "relatedLocations": { "type": "array", "items": { "$ref": "#/$defs/relatedLocation" } },
+        "evidence": { "type": "string" },
+        "suggestedFix": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  },
   "properties": {
     "tool": { "const": "vibeguard" },
     "schemaVersion": { "const": "vibeguard.agentGraph.v1" },
@@ -11,8 +62,8 @@
     "targetPath": { "type": "string" },
     "summary": { "type": "object", "additionalProperties": true },
     "nodes": { "type": "array" },
-    "edges": { "type": "array" },
-    "risks": { "type": "array" }
+    "edges": { "type": "array", "items": { "$ref": "#/$defs/edge" } },
+    "risks": { "type": "array", "items": { "$ref": "#/$defs/risk" } }
   },
   "additionalProperties": true
 }

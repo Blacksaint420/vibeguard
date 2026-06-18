@@ -21,14 +21,25 @@ export function explainRule(id: string): string | undefined {
   if (!rule) return undefined;
   const enterpriseContext = explainEnterpriseContext(rule);
   return [
-    `${rule.ruleId}: ${rule.title}`,
+    "VIBEGUARD / RULE BRIEF",
+    "=======================",
+    `Rule: ${rule.ruleId}`,
+    `Title: ${rule.title}`,
     "",
+    "Risk Narrative",
+    "--------------",
     `Why it matters: ${rule.why ?? genericWhy(rule.title)}`,
+    "",
+    "Remediation",
+    "-----------",
     `Suggested fix: ${rule.fix ?? genericFix()}`,
     "",
+    "Enterprise Context",
+    "------------------",
     `Rule version: ${enterpriseContext.rule?.version ?? "unknown"}`,
     `Rule stability: ${enterpriseContext.rule?.stability ?? "unknown"}`,
     `Risk category: ${enterpriseContext.risk?.category ?? "Unmapped technical finding"}`,
+    "",
     "Framework mappings:",
     ...formatFrameworkMappings(enterpriseContext)
   ].join("\n");

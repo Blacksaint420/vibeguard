@@ -42,6 +42,19 @@ test("parseArgs supports aibom and graph commands", () => {
   assert.equal(graph.format, "graph-json");
 });
 
+test("parseArgs defaults to the interactive framework", () => {
+  const command = parseArgs([]);
+
+  assert.equal(command.name, "interactive");
+});
+
+test("parseArgs supports interactive target option", () => {
+  const command = parseArgs(["interactive", "--target", "/tmp/CV Maker"]);
+
+  assert.equal(command.name, "interactive");
+  assert.equal(command.targetPath, "/tmp/CV Maker");
+});
+
 test("parseArgs supports repository path for full scan", () => {
   const command = parseArgs(["check", "/tmp/CV Maker", "--format", "json"]);
 
@@ -260,6 +273,92 @@ test("runCli renders AI BOM JSON", async () => {
   assert.equal(output.summary.models, 1);
 });
 
+test("runCli defaults AI BOM to human console output", async () => {
+  const writes: string[] = [];
+  const result = await runCli(["aibom"], {
+    cwd: process.cwd(),
+    collectRepositoryFiles: () => [{
+      path: "src/agent.ts",
+      oldPath: "src/agent.ts",
+      status: "modified",
+      addedLines: [
+        { line: 1, content: "const response = await openai.chat.completions.create({ model: 'gpt-4.1', messages });" }
+      ],
+      removedLines: [],
+      allLines: [
+        { line: 1, content: "const response = await openai.chat.completions.create({ model: 'gpt-4.1', messages });" }
+      ]
+    }],
+    stdout: (text) => writes.push(text),
+    stderr: () => {}
+  });
+
+  const output = writes.join("");
+  assert.equal(result.exitCode, 0);
+  assert.equal(output.includes("VIBEGUARD / AI BILL OF MATERIALS"), true);
+  assert.equal(output.includes("Asset Register"), true);
+});
+
+test("runCli defaults agent graph to human console output", async () => {
+  const writes: string[] = [];
+  const result = await runCli(["graph"], {
+    cwd: process.cwd(),
+    collectRepositoryFiles: () => [{
+      path: "src/agent.ts",
+      oldPath: "src/agent.ts",
+      status: "modified",
+      addedLines: [
+        { line: 1, content: "export const agent = createAgent({ name: 'support-agent', tools: [shellTool] });" },
+        { line: 2, content: "const shellTool = { name: 'run_shell', execute: ({ command }) => exec(command) };" }
+      ],
+      removedLines: [],
+      allLines: [
+        { line: 1, content: "export const agent = createAgent({ name: 'support-agent', tools: [shellTool] });" },
+        { line: 2, content: "const shellTool = { name: 'run_shell', execute: ({ command }) => exec(command) };" }
+      ]
+    }],
+    stdout: (text) => writes.push(text),
+    stderr: () => {}
+  });
+
+  const output = writes.join("");
+  assert.equal(result.exitCode, 0);
+  assert.equal(output.includes("VIBEGUARD / AGENT CAPABILITY GRAPH"), true);
+  assert.equal(output.includes("Exposure Summary"), true);
+});
+
+test("runCli shows framework guidance when interactive mode has no TTY", async () => {
+  const writes: string[] = [];
+  const result = await runCli([], {
+    cwd: process.cwd(),
+    isTty: false,
+    stdout: (text) => writes.push(text),
+    stderr: () => {}
+  });
+
+  const output = writes.join("");
+  assert.equal(result.exitCode, 0);
+  assert.equal(output.includes("AI security CLI framework"), true);
+  assert.equal(output.includes("vibeguard interactive"), true);
+});
+
+test("runCli starts the framework console with no arguments", async () => {
+  const writes: string[] = [];
+  const answers = ["", "doctor", "exit"];
+  const result = await runCli([], {
+    cwd: process.cwd(),
+    prompt: async () => answers.shift() ?? "n",
+    stdout: (text) => writes.push(text),
+    stderr: () => {}
+  });
+
+  const output = writes.join("");
+  assert.equal(result.exitCode, 0);
+  assert.equal(output.includes("VibeGuard Framework"), true);
+  assert.equal(output.includes("doctor"), true);
+  assert.equal(output.includes("VibeGuard doctor"), true);
+});
+
 test("runCli explain returns rule details", async () => {
   const writes: string[] = [];
   const result = await runCli(["explain", "js-eval"], {
@@ -347,4 +446,89 @@ test("runCli doctor reports local-first behavior", async () => {
 
   assert.equal(result.exitCode, 0);
   assert.equal(writes.join("").includes("No source upload"), true);
+});
+
+test("runCli strict coverage exits when repository coverage is partial", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "vibeguard-strict-coverage-"));
+  writeFileSync(join(cwd, "large.txt"), "x".repeat(20));
+  const errors: string[] = [];
+  const result = await runCli(["check", "--quiet", "--strict-coverage", "--max-file-bytes", "10"], {
+    cwd,
+    stdout: () => {},
+    stderr: (text) => errors.push(text)
+  });
+
+  assert.equal(result.exitCode, 2);
+  assert.equal(errors.join("").includes("Coverage incomplete"), true);
+});
+
+test("runCli rejects report output paths outside the working directory", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "vibeguard-cli-"));
+  const outsidePath = `${cwd}-outside-report.html`;
+  const errors: string[] = [];
+  const result = await runCli(["report", "--output", outsidePath, "--quiet"], {
+    cwd,
+    collectRepositoryFiles: () => [],
+    stdout: () => {},
+    stderr: (text) => errors.push(text)
+  });
+
+  assert.equal(result.exitCode, 2);
+  assert.equal(errors.join("").includes("--output must stay inside the working directory"), true);
+  assert.equal(existsSync(outsidePath), false);
+});
+
+test("runCli creates nested output directories inside the working directory", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "vibeguard-output-"));
+  const result = await runCli(["aibom", "--format", "aibom-json", "--output", "reports/aibom.json"], {
+    cwd,
+    collectRepositoryFiles: () => [],
+    stdout: () => {},
+    stderr: () => {}
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(existsSync(join(cwd, "reports", "aibom.json")), true);
+});
+
+test("runCli still rejects output directories outside the working directory", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "vibeguard-output-"));
+  const errors: string[] = [];
+  const result = await runCli(["aibom", "--format", "aibom-json", "--output", "../aibom.json"], {
+    cwd,
+    collectRepositoryFiles: () => [],
+    stdout: () => {},
+    stderr: (text) => errors.push(text)
+  });
+
+  assert.equal(result.exitCode, 2);
+  assert.equal(errors.join("").includes("--output must stay inside the working directory"), true);
+});
+
+test("runCli rejects suppression config paths outside the working directory", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "vibeguard-cli-"));
+  const outsidePath = `${cwd}-outside-config.yml`;
+  const errors: string[] = [];
+  const result = await runCli([
+    "suppress",
+    "js-eval",
+    "--file",
+    "src/app.js",
+    "--reason",
+    "accepted for migration",
+    "--reviewer",
+    "security@example.com",
+    "--expires",
+    "2099-01-01",
+    "--config",
+    outsidePath
+  ], {
+    cwd,
+    stdout: () => {},
+    stderr: (text) => errors.push(text)
+  });
+
+  assert.equal(result.exitCode, 2);
+  assert.equal(errors.join("").includes("--config must stay inside the working directory"), true);
+  assert.equal(existsSync(outsidePath), false);
 });

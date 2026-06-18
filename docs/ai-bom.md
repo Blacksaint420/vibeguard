@@ -21,3 +21,15 @@ vibeguard aibom --format aibom-markdown --output vibeguard-aibom.md
 ```
 
 The AI BOM is evidence for security review, GRC inventory, and AI system ownership conversations. It is not a runtime discovery tool and does not execute project code.
+
+## Evidence Strength
+
+Each asset includes evidence metadata so reviewers can tell how dependable the inventory claim is:
+
+- `direct`: detected from explicit syntax such as a provider constructor, model literal, tool definition, vector-store call, or MCP config entry.
+- `same-file`: inferred from a local reference in the same file, such as a tool name listed in an agent `tools` array.
+- `same-module`: inferred from related AI assets found in the same source module.
+- `repository-inferred`: inferred from repository-level fallback linking; useful for review, but not proof of runtime reachability.
+- `unknown`: retained for compatibility when a source cannot be classified.
+
+Use `aibom-json` when you need the full `evidenceStrength`, `evidenceSource`, `detectionMethod`, and `relatedLocations` fields for audit evidence.

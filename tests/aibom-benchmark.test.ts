@@ -7,7 +7,7 @@ test("AI inventory benchmark corpus is versioned", () => {
   const corpus = JSON.parse(readFileSync("benchmarks/ai-inventory-corpus.json", "utf8"));
 
   assert.equal(corpus.schemaVersion, "vibeguard.aibomBenchmark.v1");
-  assert.equal(corpus.cases.length, 2);
+  assert.equal(corpus.cases.length >= 6, true);
 });
 
 test("AI inventory benchmark passes", () => {

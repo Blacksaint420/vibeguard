@@ -3,6 +3,7 @@ import type { AgentCapabilityGraph, AiBom } from "./aibom/index.ts";
 
 export type Severity = "low" | "medium" | "high" | "critical";
 export type Confidence = "low" | "medium" | "high";
+export type EvidenceStrength = "direct" | "same-file" | "same-module" | "repository-inferred" | "unknown";
 export type OutputFormat =
   | "table"
   | "json"
@@ -58,6 +59,41 @@ export type GrcRisk = {
   controlOwner: "engineering" | "security" | "grc" | "platform";
 };
 
+export type ReportPosture = "pass" | "review" | "blocked";
+export type MergeRecommendation = "Safe to proceed" | "Review before merge" | "Do not merge";
+export type ReportOwnerSuggestion = "Engineering" | "Security" | "Platform" | "GRC";
+export type SeverityDistribution = Record<Severity, number>;
+
+export type ReportTopRisk = {
+  title: string;
+  ruleId: string;
+  severity: Severity;
+  riskScore: number;
+  file: string;
+  line: number;
+  blocking: boolean;
+  owner: ReportOwnerSuggestion;
+  impact?: string;
+  suggestedFix: string;
+  owasp?: OwaspLlmCategory;
+};
+
+export type ReportControlGapSummary = {
+  gap: string;
+  count: number;
+  owner: ReportOwnerSuggestion;
+};
+
+export type DerivedReportSummary = {
+  overallPosture: ReportPosture;
+  businessRiskLevel: RiskLevel;
+  mergeRecommendation: MergeRecommendation;
+  severityDistribution: SeverityDistribution;
+  topRisks: ReportTopRisk[];
+  controlGapSummary: ReportControlGapSummary[];
+  ownerSuggestion: ReportOwnerSuggestion;
+};
+
 export type ChangedLine = {
   line: number;
   content: string;
@@ -89,6 +125,10 @@ export type Finding = {
   risk?: GrcRisk;
   controlGaps?: string[];
   evidence?: string;
+  evidenceStrength: EvidenceStrength;
+  evidenceSource: string;
+  detectionMethod: string;
+  relatedLocations?: Array<{ file: string; line: number; label?: string }>;
   attackPath?: string;
   impact?: string;
   why: string;
@@ -98,9 +138,13 @@ export type Finding = {
   blocking: boolean;
 };
 
-export type FindingInput = Omit<Finding, "id" | "blocking"> & {
+export type FindingInput = Omit<Finding, "id" | "blocking" | "evidenceStrength" | "evidenceSource" | "detectionMethod" | "relatedLocations"> & {
   id?: string;
   blocking?: boolean;
+  evidenceStrength?: EvidenceStrength;
+  evidenceSource?: string;
+  detectionMethod?: string;
+  relatedLocations?: Array<{ file: string; line: number; label?: string }>;
 };
 
 export type Suppression = {
@@ -127,6 +171,12 @@ export type Policy = {
   suppressions: Suppression[];
   suppressionPolicy: SuppressionPolicy;
   minConfidence?: Confidence;
+  coverage: {
+    requireComplete: boolean;
+    maxFiles?: number;
+    maxFileBytes?: number;
+    failOnUnreadable: boolean;
+  };
   aiPrompts: {
     enabled: boolean;
   };
@@ -144,6 +194,12 @@ export type CheckOptions = {
   maxFindings?: number;
   baselineFindingIds?: string[];
   vulnProvider?: "null" | "mock" | "osv";
+  vulnProviderFailMode?: "warn" | "fail";
+  vulnProviderTimeoutMs?: number;
+  vulnProviderConcurrency?: number;
+  strictCoverage?: boolean;
+  maxFiles?: number;
+  maxFileBytes?: number;
   policy?: Policy;
 };
 
@@ -178,6 +234,7 @@ export type CheckResult = {
     warnings: number;
     baselineSuppressed: number;
   };
+  coverage: CoverageSummary;
   warnings: ScanWarning[];
 };
 
@@ -196,9 +253,25 @@ export type Baseline = {
   findings: BaselineFinding[];
 };
 
+export type ScanWarningCode = "unreadable" | "binary" | "oversized" | "outside-root" | "file-limit" | "policy-excluded" | "vulnerability-provider";
+
 export type ScanWarning = {
+  code?: ScanWarningCode;
   path: string;
   message: string;
+};
+
+export type CoverageSummary = {
+  filesDiscovered: number;
+  filesScanned: number;
+  filesSkipped: number;
+  filesExcludedByPolicy: number;
+  filesSkippedBinary: number;
+  filesSkippedOversized: number;
+  filesUnreadable: number;
+  fileLimitReached: boolean;
+  coveragePercent: number;
+  coverageStatus: "complete" | "partial" | "failed";
 };
 
 export type Vulnerability = {
@@ -212,6 +285,14 @@ export type Vulnerability = {
 export type VulnerabilityProvider = {
   name: string;
   query(packageName: string, version?: string, ecosystem?: string): Promise<Vulnerability[]>;
+};
+
+export type VulnerabilityProviderResult = {
+  vulnerabilities: Vulnerability[];
+  warnings: ScanWarning[];
+  source: string;
+  freshness: "live" | "cache" | "unavailable";
+  durationMs: number;
 };
 
 export function createFindingId(ruleId: string, file: string, line: number, snippet: string): string {
@@ -230,6 +311,10 @@ export function createFinding(input: FindingInput): Finding {
     frameworks: input.frameworks ?? [],
     risk: input.risk,
     controlGaps: input.controlGaps ?? [],
+    evidenceStrength: input.evidenceStrength ?? "direct",
+    evidenceSource: input.evidenceSource ?? [input.file, input.line].join(":"),
+    detectionMethod: input.detectionMethod ?? "scanner-rule-match",
+    relatedLocations: input.relatedLocations ?? [],
     blocking: input.blocking ?? false
   };
 }

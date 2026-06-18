@@ -21,6 +21,9 @@ include:
 exclude: []
 suppressions: []
 minConfidence: high
+coverage:
+  requireComplete: false
+  failOnUnreadable: false
 ```
 
 Suppress a finding by rule and file:
@@ -43,8 +46,29 @@ Runtime controls can also be passed on the command line:
 ```bash
 vibeguard check --max-findings 50
 vibeguard check --min-confidence high
+vibeguard check --strict-coverage
+vibeguard check --max-files 10000
+vibeguard check --max-file-bytes 1048576
 vibeguard check --quiet
 ```
+
+## Coverage
+
+Every scan reports coverage in JSON, risk-json, HTML, Markdown, and table output.
+
+Coverage fields include discovered files, scanned files, skipped files, policy exclusions, binary skips, oversized skips, unreadable files, file-limit status, coverage percent, and status: `complete`, `partial`, or `failed`.
+
+Policy controls:
+
+```yaml
+coverage:
+  requireComplete: true
+  failOnUnreadable: true
+  maxFiles: 10000
+  maxFileBytes: 1048576
+```
+
+`--strict-coverage` exits with code `2` when coverage is incomplete because of tool/config collection limits. `coverage.requireComplete: true` turns incomplete coverage into a blocking policy finding.
 
 Baseline current findings when adopting VibeGuard in an existing repository:
 

@@ -15,6 +15,24 @@ inputs:
     description: npm package version or dist tag.
     required: false
     default: "latest"
+  fail-on-findings:
+    description: Fail the action when VibeGuard returns blocking findings.
+    required: false
+    default: "false"
+
+outputs:
+  sarif-file:
+    description: Path to the generated SARIF report.
+    value: vibeguard.sarif
+  aibom-file:
+    description: Path to the generated AI BOM report.
+    value: vibeguard-aibom.json
+  agent-graph-file:
+    description: Path to the generated agent graph report.
+    value: vibeguard-agent-graph.json
+  exit-code:
+    description: VibeGuard scan exit code. 0 means no blocking findings, 1 means blocking findings, 2 means runtime or configuration error.
+    value: ${{ steps.scan.outputs.status }}
 
 runs:
   using: composite
@@ -26,5 +44,16 @@ runs:
       shell: bash
       run: npx --yes "vibeguard@${{ inputs.version }}" graph "${{ inputs.path }}" --format graph-json --output vibeguard-agent-graph.json
     - name: Run VibeGuard SARIF scan
+      id: scan
       shell: bash
-      run: npx --yes "vibeguard@${{ inputs.version }}" check "${{ inputs.path }}" --format sarif --output vibeguard.sarif
+      run: |
+        set +e
+        npx --yes "vibeguard@${{ inputs.version }}" check "${{ inputs.path }}" --format sarif --output vibeguard.sarif
+        status=$?
+        echo "status=$status" >> "$GITHUB_OUTPUT"
+
+        if [ "$status" -eq 1 ] && [ "${{ inputs.fail-on-findings }}" != "true" ]; then
+          exit 0
+        fi
+
+        exit "$status"

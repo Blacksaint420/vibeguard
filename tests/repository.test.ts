@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { collectRepositoryFiles } from "../packages/core/src/repository.ts";
+import { collectRepository, collectRepositoryFiles } from "../packages/core/src/repository.ts";
 import { runCheck } from "../packages/core/src/engine.ts";
 import { defaultPolicy } from "../packages/core/src/policy.ts";
 
@@ -59,4 +59,81 @@ test("collectRepositoryFiles follows symlinked directories without reading them 
     "node_modules/app/index.js",
     "packages/app/index.js"
   ]);
+});
+
+test("collectRepository skips symlinks that resolve outside the target root", () => {
+  const root = mkdtempSync(join(tmpdir(), "vibeguard-symlink-root-"));
+  const outside = mkdtempSync(join(tmpdir(), "vibeguard-symlink-outside-"));
+  mkdirSync(join(root, "src"), { recursive: true });
+  writeFileSync(join(root, "src", "app.js"), "eval(req.body.code);\n");
+  writeFileSync(join(outside, "secret.js"), "eval(secret);\n");
+  symlinkSync(outside, join(root, "outside"), "dir");
+
+  const result = collectRepository(root);
+  const paths = result.files.map((file) => file.path).sort();
+
+  assert.deepEqual(paths, ["src/app.js"]);
+  assert.equal(result.warnings.some((warning) => warning.path === "outside" && warning.message.includes("outside target root")), true);
+});
+
+test("collectRepository skips binary and oversized files", () => {
+  const root = mkdtempSync(join(tmpdir(), "vibeguard-file-limits-"));
+  mkdirSync(join(root, "src"), { recursive: true });
+  writeFileSync(join(root, "src", "app.js"), "eval(req.body.code);\n");
+  writeFileSync(join(root, "src", "binary.dat"), Buffer.from([0x41, 0x00, 0x42]));
+  writeFileSync(join(root, "src", "large.txt"), "x".repeat(1024 * 1024 + 1));
+
+  const result = collectRepository(root);
+  const paths = result.files.map((file) => file.path).sort();
+
+  assert.deepEqual(paths, ["src/app.js"]);
+  assert.equal(result.warnings.some((warning) => warning.path === "src/binary.dat" && warning.message.includes("binary")), true);
+  assert.equal(result.warnings.some((warning) => warning.path === "src/large.txt" && warning.message.includes("larger")), true);
+});
+
+test("collectRepository reports structured coverage for skipped files", () => {
+  const root = mkdtempSync(join(tmpdir(), "vibeguard-coverage-"));
+  mkdirSync(join(root, "src"), { recursive: true });
+  writeFileSync(join(root, "src", "app.js"), "ok\n");
+  writeFileSync(join(root, "src", "binary.dat"), Buffer.from([0x41, 0x00, 0x42]));
+  writeFileSync(join(root, "src", "large.txt"), "x".repeat(20));
+
+  const result = collectRepository(root, { maxFileBytes: 10 });
+
+  assert.equal(result.coverage.filesDiscovered, 3);
+  assert.equal(result.coverage.filesScanned, 1);
+  assert.equal(result.coverage.filesSkippedBinary, 1);
+  assert.equal(result.coverage.filesSkippedOversized, 1);
+  assert.equal(result.coverage.coverageStatus, "partial");
+  assert.equal(result.warnings.some((warning) => warning.code === "binary"), true);
+  assert.equal(result.warnings.some((warning) => warning.code === "oversized"), true);
+});
+
+test("collectRepository reports file limit coverage", () => {
+  const root = mkdtempSync(join(tmpdir(), "vibeguard-file-limit-"));
+  writeFileSync(join(root, "a.js"), "ok\n");
+  writeFileSync(join(root, "b.js"), "ok\n");
+
+  const result = collectRepository(root, { maxFiles: 1 });
+
+  assert.equal(result.files.length, 1);
+  assert.equal(result.coverage.fileLimitReached, true);
+  assert.equal(result.coverage.coverageStatus, "partial");
+  assert.equal(result.warnings.some((warning) => warning.code === "file-limit"), true);
+});
+
+test("runCheck reports files excluded by policy in coverage", async () => {
+  const root = mkdtempSync(join(tmpdir(), "vibeguard-policy-coverage-"));
+  mkdirSync(join(root, "src"), { recursive: true });
+  mkdirSync(join(root, "ignored"), { recursive: true });
+  writeFileSync(join(root, "src", "app.js"), "const ok = true;\n");
+  writeFileSync(join(root, "ignored", "app.js"), "eval(req.body.code);\n");
+
+  const policy = { ...defaultPolicy(), exclude: ["ignored/**"] };
+  const result = await runCheck({ cwd: root, policy });
+
+  assert.equal(result.coverage.filesDiscovered, 2);
+  assert.equal(result.coverage.filesScanned, 1);
+  assert.equal(result.coverage.filesExcludedByPolicy, 1);
+  assert.equal(result.coverage.coverageStatus, "partial");
 });

@@ -1,3 +1,5 @@
+import type { EvidenceStrength } from "../types.ts";
+
 export type AiAssetKind =
   | "provider"
   | "model"
@@ -27,6 +29,10 @@ export type AiAsset = {
   file: string;
   line: number;
   confidence: "low" | "medium" | "high";
+  evidenceStrength: EvidenceStrength;
+  evidenceSource: string;
+  detectionMethod: string;
+  relatedLocations?: Array<{ file: string; line: number; label?: string }>;
   capabilities: AiCapability[];
   metadata: Record<string, string | number | boolean>;
 };
@@ -79,6 +85,10 @@ export type AgentGraphEdge = {
   to: string;
   relation: "uses" | "calls" | "exposes" | "retrieves" | "connects";
   capability?: AiCapability;
+  evidenceStrength: EvidenceStrength;
+  evidenceSource: string;
+  detectionMethod: string;
+  relatedLocations?: Array<{ file: string; line: number; label?: string }>;
 };
 
 export type AgentGraphRisk = {
@@ -89,6 +99,10 @@ export type AgentGraphRisk = {
   assetId: string;
   capability: AiCapability;
   path: string[];
+  evidenceStrength: EvidenceStrength;
+  evidenceSource: string;
+  detectionMethod: string;
+  relatedLocations?: Array<{ file: string; line: number; label?: string }>;
   evidence: string;
   suggestedFix: string;
 };

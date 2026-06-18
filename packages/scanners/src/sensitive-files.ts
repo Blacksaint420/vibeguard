@@ -27,7 +27,7 @@ export function runSensitiveFileScanner(files: DiffFile[]): Finding[] {
       riskScore: 84,
       file: file.path,
       line: file.addedLines[0]?.line ?? 1,
-      snippet: file.addedLines[0]?.content ?? file.path,
+      snippet: "[redacted sensitive file content]",
       evidence: `Sensitive path changed: ${file.path}.`,
       attackPath: "Sensitive file enters source tree -> credentials or private data become available in history, reviews, or artifacts.",
       impact: "Exposed sensitive files can disclose API keys, environment secrets, cloud credentials, or private identities.",

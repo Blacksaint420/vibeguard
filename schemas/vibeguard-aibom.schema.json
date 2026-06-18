@@ -4,20 +4,55 @@
   "title": "VibeGuard AI Bill of Materials",
   "type": "object",
   "required": ["tool", "schemaVersion", "generatedAt", "targetPath", "summary"],
+  "$defs": {
+    "evidenceStrength": {
+      "type": "string",
+      "enum": ["direct", "same-file", "same-module", "repository-inferred", "unknown"]
+    },
+    "relatedLocation": {
+      "type": "object",
+      "required": ["file", "line"],
+      "properties": {
+        "file": { "type": "string" },
+        "line": { "type": "number" },
+        "label": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "asset": {
+      "type": "object",
+      "required": ["id", "kind", "name", "file", "line", "confidence", "evidenceStrength", "evidenceSource", "detectionMethod", "capabilities", "metadata"],
+      "properties": {
+        "id": { "type": "string" },
+        "kind": { "type": "string" },
+        "name": { "type": "string" },
+        "file": { "type": "string" },
+        "line": { "type": "number" },
+        "confidence": { "type": "string", "enum": ["low", "medium", "high"] },
+        "evidenceStrength": { "$ref": "#/$defs/evidenceStrength" },
+        "evidenceSource": { "type": "string" },
+        "detectionMethod": { "type": "string" },
+        "relatedLocations": { "type": "array", "items": { "$ref": "#/$defs/relatedLocation" } },
+        "capabilities": { "type": "array", "items": { "type": "string" } },
+        "metadata": { "type": "object", "additionalProperties": true }
+      },
+      "additionalProperties": true
+    }
+  },
   "properties": {
     "tool": { "const": "vibeguard" },
     "schemaVersion": { "const": "vibeguard.aibom.v1" },
     "generatedAt": { "type": "string" },
     "targetPath": { "type": "string" },
     "summary": { "type": "object", "additionalProperties": true },
-    "providers": { "type": "array" },
-    "models": { "type": "array" },
-    "prompts": { "type": "array" },
-    "agents": { "type": "array" },
-    "tools": { "type": "array" },
-    "vectorStores": { "type": "array" },
-    "mcpServers": { "type": "array" },
-    "dataStores": { "type": "array" }
+    "providers": { "type": "array", "items": { "$ref": "#/$defs/asset" } },
+    "models": { "type": "array", "items": { "$ref": "#/$defs/asset" } },
+    "prompts": { "type": "array", "items": { "$ref": "#/$defs/asset" } },
+    "agents": { "type": "array", "items": { "$ref": "#/$defs/asset" } },
+    "tools": { "type": "array", "items": { "$ref": "#/$defs/asset" } },
+    "vectorStores": { "type": "array", "items": { "$ref": "#/$defs/asset" } },
+    "mcpServers": { "type": "array", "items": { "$ref": "#/$defs/asset" } },
+    "dataStores": { "type": "array", "items": { "$ref": "#/$defs/asset" } }
   },
   "additionalProperties": true
 }
