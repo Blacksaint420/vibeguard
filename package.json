@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Local-first AI security CLI framework for developer findings and GRC risk evidence.",
   "type": "module",
-  "private": false,
+  "private": true,
   "license": "Apache-2.0",
   "author": "VibeGuard maintainers",
   "repository": {
@@ -70,8 +70,7 @@
   "engines": {
     "node": ">=20"
   },
-  "publishConfig": {
-    "access": "public",
-    "provenance": true
+  "devDependencies": {
+    "typescript": "6.0.3"
   }
 }

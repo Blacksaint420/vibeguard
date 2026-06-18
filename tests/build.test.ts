@@ -1,10 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+test("build uses the package TypeScript compiler instead of Node built-in type stripping", () => {
+  const buildScript = readFileSync("scripts/build.mjs", "utf8");
+  const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
+
+  assert.equal(buildScript.includes("stripTypeScriptTypes"), false);
+  assert.equal(buildScript.includes("from \"typescript\""), true);
+  assert.equal(typeof packageJson.devDependencies?.typescript, "string");
+});
 
 test("build emits an installable JavaScript CLI", () => {
   const build = spawnSync("npm", ["run", "build"], { encoding: "utf8" });

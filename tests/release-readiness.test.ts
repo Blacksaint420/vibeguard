@@ -40,13 +40,14 @@ test("public collaboration templates exist", () => {
   }
 });
 
-test("package metadata supports public enterprise adoption", () => {
+test("package metadata supports local enterprise adoption", () => {
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));
 
   assert.equal(pkg.license, "Apache-2.0");
   assert.equal(pkg.repository.url, "git+https://github.com/Blacksaint420/vibeguard.git");
   assert.equal(pkg.author, "VibeGuard maintainers");
-  assert.equal(pkg.publishConfig.provenance, true);
+  assert.equal(pkg.private, true);
+  assert.equal("publishConfig" in pkg, false);
   assert.equal(pkg.keywords.includes("ai-security"), true);
   assert.equal(pkg.keywords.includes("aibom"), true);
 });
@@ -63,8 +64,9 @@ test("GitHub workflows and action exist", () => {
   }
 
   const release = readFileSync(".github/workflows/release.yml", "utf8");
-  assert.equal(release.includes("id-token: write"), true);
-  assert.equal(release.includes("npm publish --provenance --access public"), true);
+  assert.equal(release.includes("npm publish"), false);
+  assert.equal(release.includes("NPM_TOKEN"), false);
+  assert.equal(release.includes("npm run vibeguard:dist -- doctor"), true);
 
   const scan = readFileSync(".github/workflows/vibeguard-code-scanning.yml", "utf8");
   assert.equal(scan.includes("security-events: write"), true);
@@ -81,6 +83,8 @@ test("GitHub workflows and action exist", () => {
   assert.equal(action.includes("fail-on-findings"), true);
   assert.equal(action.includes("exit-code"), true);
   assert.equal(action.includes("steps.scan.outputs.status"), true);
+  assert.equal(action.includes("npx --yes"), false);
+  assert.equal(action.includes("GITHUB_ACTION_PATH"), true);
 });
 
 test("repository has an active self-scan policy", () => {
@@ -96,7 +100,7 @@ test("repository has an active self-scan policy", () => {
   assert.equal(policy.includes("dist/**"), true);
 });
 
-test("published package includes enterprise policy examples", () => {
+test("local package artifact includes enterprise policy examples", () => {
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));
 
   assert.equal(pkg.files.includes("examples/policies"), true);

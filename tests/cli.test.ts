@@ -380,7 +380,11 @@ test("runCli setup prints installation and API key guidance", async () => {
   assert.equal(output.includes("vibeguard init"), true);
   assert.equal(output.includes("--vuln-provider osv"), true);
   assert.equal(output.includes("No OpenAI, Anthropic, Gemini, or LLM provider API key is required by VibeGuard"), true);
-  assert.equal(output.includes("NPM_TOKEN"), true);
+  assert.equal(output.includes("local source checkout only"), true);
+  assert.equal(output.includes("npm link"), true);
+  assert.equal(output.includes("not registered with npm"), true);
+  assert.equal(output.includes("NPM_TOKEN"), false);
+  assert.equal(output.includes("npm install -g"), false);
   assert.equal(output.includes("vibeguard doctor"), true);
 });
 

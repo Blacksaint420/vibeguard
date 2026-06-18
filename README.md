@@ -23,28 +23,25 @@ VibeGuard is pre-1.0. The CLI is usable for local scans and CI experiments, but 
 
 ## Install
 
-After the package is published to npm, run it without installing:
+VibeGuard is currently a local-install application. It is not registered with npm yet, so install it from a local source checkout.
 
 ```bash
-npx --yes vibeguard@latest doctor
-npx --yes vibeguard@latest check
-```
-
-Or install the CLI globally:
-
-```bash
-npm install -g vibeguard
-```
-
-For local development from source:
-
-```bash
+git clone git@github.com:Blacksaint420/vibeguard.git
+cd vibeguard
 npm install
 npm run build
 npm link
+vibeguard doctor
 ```
 
-The published CLI runs from compiled JavaScript in `dist/` and targets Node 20+. The source tests use the local Node runtime.
+You can also run it without linking the command:
+
+```bash
+npm run vibeguard -- doctor
+npm run vibeguard -- check
+```
+
+Registry, `npx`, and global package installs are not supported until the package is registered. The local CLI targets Node 20+. The source tests use the local Node runtime.
 
 ## Commands
 
@@ -192,11 +189,13 @@ permissions:
 
 steps:
   - uses: actions/checkout@v6
+  - uses: actions/setup-node@v6
+    with:
+      node-version: "24.x"
   - id: vibeguard
     uses: Blacksaint420/vibeguard@v0.1.0
     with:
       path: "."
-      version: "latest"
   - uses: github/codeql-action/upload-sarif@v4
     with:
       sarif_file: ${{ steps.vibeguard.outputs.sarif-file }}

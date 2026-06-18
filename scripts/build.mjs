@@ -2,7 +2,7 @@
 import { chmodSync, cpSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { stripTypeScriptTypes } from "node:module";
+import ts from "typescript";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const outDir = join(root, "dist");
@@ -32,11 +32,31 @@ function buildDirectory(inputDir, outputDir) {
 
     mkdirSync(dirname(outputPath), { recursive: true });
     const source = readFileSync(inputPath, "utf8");
-    const transformed = stripTypeScriptTypes(source, { mode: "transform" })
+    const transformed = transpileTypeScript(source, inputPath)
       .replace(/from\s+["']([^"']+)\.ts["']/g, 'from "$1.js"')
       .replace(/import\(\s*["']([^"']+)\.ts["']\s*\)/g, 'import("$1.js")');
     writeFileSync(outputPath, transformed);
   }
+}
+
+function transpileTypeScript(source, fileName) {
+  const result = ts.transpileModule(source, {
+    fileName,
+    compilerOptions: {
+      module: ts.ModuleKind.ESNext,
+      target: ts.ScriptTarget.ES2022
+    },
+    reportDiagnostics: true
+  });
+  const errors = (result.diagnostics ?? []).filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error);
+  if (errors.length > 0) {
+    throw new Error(ts.formatDiagnosticsWithColorAndContext(errors, {
+      getCanonicalFileName: (name) => name,
+      getCurrentDirectory: () => root,
+      getNewLine: () => "\n"
+    }));
+  }
+  return result.outputText;
 }
 
 console.log(`Built ${relative(root, outDir)}`);

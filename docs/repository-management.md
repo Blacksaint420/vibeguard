@@ -35,7 +35,7 @@ The `Main Change Readiness` workflow runs on pushes to `main` when meaningful fi
 - GitHub Actions workflows and action metadata
 - Public docs and release/security files
 
-The workflow verifies the repository by running tests, building the compiled CLI, checking the npm package contents, generating SARIF, AI BOM, and agent graph artifacts, uploading SARIF to GitHub code scanning, and failing on blocking VibeGuard findings.
+The workflow verifies the repository by running tests, building the compiled CLI, checking the local package artifact, generating SARIF, AI BOM, and agent graph artifacts, uploading SARIF to GitHub code scanning, and failing on blocking VibeGuard findings.
 
 ## Branch Protection Recommendation
 

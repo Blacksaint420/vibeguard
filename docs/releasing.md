@@ -1,18 +1,17 @@
-# Releasing
+# Local Release And Production Git Deployment
 
-This project publishes the `vibeguard` npm package and the GitHub Action from the same repository.
+VibeGuard is currently distributed as a local-install application from the GitHub repository. It is not registered with npm yet, and release automation must not publish to the npm registry.
 
 ## Prerequisites
 
-- The npm package name is available to the maintainer account.
-- The repository has an `NPM_TOKEN` secret with publish access.
-- GitHub Actions has `id-token: write` permission for npm provenance.
+- The local checkout is on the branch intended for production git.
+- GitHub Actions for CI and main change readiness are passing.
 - Security contact details in `SECURITY.md` are valid.
 
-## Release Checklist
+## Production Git Checklist
 
-1. Update `CHANGELOG.md` and remove the `Unreleased` marker for the version being published.
-2. Confirm `package.json` has the intended version, repository URL, license, files list, and public publish config.
+1. Update `CHANGELOG.md` when the change is user-visible.
+2. Confirm `package.json` is marked private so accidental npm publication is blocked.
 3. Run the local verification suite:
 
 ```bash
@@ -22,17 +21,20 @@ npm pack --dry-run
 npm run vibeguard:dist -- check --quiet --format json
 ```
 
-4. Confirm `npm pack --dry-run` includes compiled `dist/` files and excludes local reports, baselines, package tarballs, and development-only artifacts.
-5. Commit the release changes and create a GitHub release for the matching tag, for example `v0.1.0`.
-6. After the release workflow publishes to npm, smoke test the package:
+4. Confirm `npm pack --dry-run` can produce a local artifact for inspection and excludes local reports, baselines, package tarballs, and development-only artifacts.
+5. Commit the verified changes and push `main` to `origin`.
+6. Smoke test the local install path from a fresh checkout when needed:
 
 ```bash
-npx --yes vibeguard@latest doctor
-npx --yes vibeguard@latest check --quiet
+npm install
+npm run build
+npm link
+vibeguard doctor
+vibeguard check --quiet
 ```
 
 ## Notes
 
-- Publishing is triggered by the GitHub `release.published` event.
+- GitHub release automation verifies the local package artifact only; it does not publish to npm.
 - Generated self-scan reports are local artifacts and should not be committed.
 - Optional OSV dependency lookup must remain opt-in and documented.

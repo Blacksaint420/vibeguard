@@ -11,10 +11,6 @@ inputs:
     description: Repository path to scan.
     required: false
     default: "."
-  version:
-    description: npm package version or dist tag.
-    required: false
-    default: "latest"
   fail-on-findings:
     description: Fail the action when VibeGuard returns blocking findings.
     required: false
@@ -39,16 +35,16 @@ runs:
   steps:
     - name: Generate AI BOM
       shell: bash
-      run: npx --yes "vibeguard@${{ inputs.version }}" aibom "${{ inputs.path }}" --format aibom-json --output vibeguard-aibom.json
+      run: node "$GITHUB_ACTION_PATH/packages/cli/src/index.ts" aibom "${{ inputs.path }}" --format aibom-json --output vibeguard-aibom.json
     - name: Generate Agent Graph
       shell: bash
-      run: npx --yes "vibeguard@${{ inputs.version }}" graph "${{ inputs.path }}" --format graph-json --output vibeguard-agent-graph.json
+      run: node "$GITHUB_ACTION_PATH/packages/cli/src/index.ts" graph "${{ inputs.path }}" --format graph-json --output vibeguard-agent-graph.json
     - name: Run VibeGuard SARIF scan
       id: scan
       shell: bash
       run: |
         set +e
-        npx --yes "vibeguard@${{ inputs.version }}" check "${{ inputs.path }}" --format sarif --output vibeguard.sarif
+        node "$GITHUB_ACTION_PATH/packages/cli/src/index.ts" check "${{ inputs.path }}" --format sarif --output vibeguard.sarif
         status=$?
         echo "status=$status" >> "$GITHUB_OUTPUT"
 
