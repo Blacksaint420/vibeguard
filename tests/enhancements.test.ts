@@ -164,11 +164,12 @@ test("strict default excludes generic credentials and supply-chain heuristics", 
 });
 
 test("strict default excludes vendored and generated code or PII examples", async () => {
+  const cardFixture = ["4111", "1111", "1111", "1111"].join(" ");
   const result = await runCheck({
     repositoryFiles: [
       file("node_modules/pkg/index.js", [
         "eval(req.body.code);",
-        "const card = 'CARD_TEST_VALUE';"
+        `const card = '${cardFixture}';`
       ]),
       file(".worktrees/old-app/src/server.js", [
         "exec(req.query.command);"
@@ -190,12 +191,16 @@ test("strict default excludes vendored and generated code or PII examples", asyn
 });
 
 test("LLM02 reports only concrete tokens credentials and high-confidence PII", () => {
+  const githubToken = ["ghp_1234567890", "abcdefghijklmnopqrstuvwxyz1234"].join("");
+  const awsAccessKey = ["AKIA1234567890", "ABCDEF"].join("");
+  const ssn = ["123", "45", "6789"].join("-");
+  const cardFixture = ["4111", "1111", "1111", "1111"].join(" ");
   const findings = runSecretScanner([
     file(".env", [
-      "GITHUB_TOKEN=GITHUB_TOKEN_TEST_VALUE",
-      "AWS_ACCESS_KEY_ID=AWS_ACCESS_KEY_TEST_VALUE",
-      "CUSTOMER_SSN=SSN_TEST_VALUE",
-      "CARD_NUMBER=CARD_TEST_VALUE",
+      `GITHUB_TOKEN=${githubToken}`,
+      `AWS_ACCESS_KEY_ID=${awsAccessKey}`,
+      `CUSTOMER_SSN=${ssn}`,
+      `CARD_NUMBER=${cardFixture}`,
       "PASSWORD=development-password"
     ])
   ]);

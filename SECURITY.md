@@ -8,9 +8,7 @@ VibeGuard is pre-1.0. Security fixes are released on the latest `0.x` line.
 
 Do not open public issues for suspected vulnerabilities in VibeGuard itself.
 
-Preferred channel: use GitHub private vulnerability reporting at <https://github.com/OWNER/vibeguard/security/advisories/new>.
-
-Fallback email: security@example.invalid
+Preferred channel: use GitHub private vulnerability reporting from this repository's **Security** tab.
 
 Include the affected version, reproduction steps, impact, and whether source code, secrets, scan output, or AI BOM data can be exposed.
 

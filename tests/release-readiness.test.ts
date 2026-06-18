@@ -44,6 +44,7 @@ test("package metadata supports public enterprise adoption", () => {
 
   assert.equal(pkg.license, "Apache-2.0");
   assert.equal(pkg.repository.url, "git+https://github.com/OWNER/vibeguard.git");
+  assert.equal(pkg.author, "VibeGuard maintainers");
   assert.equal(pkg.publishConfig.provenance, true);
   assert.equal(pkg.keywords.includes("ai-security"), true);
   assert.equal(pkg.keywords.includes("aibom"), true);

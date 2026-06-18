@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/OWNER/vibeguard/schemas/vibeguard-aibom.schema.json",
+  "$id": "https://vibeguard.dev/schemas/vibeguard-aibom.schema.json",
   "title": "VibeGuard AI Bill of Materials",
   "type": "object",
   "required": ["tool", "schemaVersion", "generatedAt", "targetPath", "summary"],
