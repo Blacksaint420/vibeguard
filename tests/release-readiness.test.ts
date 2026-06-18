@@ -33,7 +33,8 @@ test("public collaboration templates exist", () => {
     ".github/ISSUE_TEMPLATE/config.yml",
     ".github/PULL_REQUEST_TEMPLATE.md",
     ".github/dependabot.yml",
-    "docs/releasing.md"
+    "docs/releasing.md",
+    "docs/repository-management.md"
   ]) {
     assert.equal(existsSync(file), true, `${file} should exist before public release`);
   }
@@ -43,7 +44,7 @@ test("package metadata supports public enterprise adoption", () => {
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));
 
   assert.equal(pkg.license, "Apache-2.0");
-  assert.equal(pkg.repository.url, "git+https://github.com/OWNER/vibeguard.git");
+  assert.equal(pkg.repository.url, "git+https://github.com/Blacksaint420/vibeguard.git");
   assert.equal(pkg.author, "VibeGuard maintainers");
   assert.equal(pkg.publishConfig.provenance, true);
   assert.equal(pkg.keywords.includes("ai-security"), true);
@@ -54,6 +55,7 @@ test("GitHub workflows and action exist", () => {
   for (const file of [
     ".github/workflows/ci.yml",
     ".github/workflows/vibeguard-code-scanning.yml",
+    ".github/workflows/main-change-readiness.yml",
     ".github/workflows/release.yml",
     "action.yml"
   ]) {
@@ -68,6 +70,13 @@ test("GitHub workflows and action exist", () => {
   assert.equal(scan.includes("security-events: write"), true);
   assert.equal(scan.includes("github/codeql-action/upload-sarif"), true);
 
+  const readiness = readFileSync(".github/workflows/main-change-readiness.yml", "utf8");
+  assert.equal(readiness.includes("branches:"), true);
+  assert.equal(readiness.includes("- main"), true);
+  assert.equal(readiness.includes("paths:"), true);
+  assert.equal(readiness.includes("npm pack --dry-run"), true);
+  assert.equal(readiness.includes("github/codeql-action/upload-sarif"), true);
+
   const action = readFileSync("action.yml", "utf8");
   assert.equal(action.includes("fail-on-findings"), true);
   assert.equal(action.includes("exit-code"), true);
@@ -81,6 +90,7 @@ test("repository has an active self-scan policy", () => {
   assert.equal(policy.includes("enabledScanners:"), true);
   assert.equal(policy.includes("  - ai"), true);
   assert.equal(policy.includes("exclude:"), true);
+  assert.equal(policy.includes(".git/**"), true);
   assert.equal(policy.includes("tests/**"), true);
   assert.equal(policy.includes("docs/superpowers/**"), true);
   assert.equal(policy.includes("dist/**"), true);
@@ -92,6 +102,7 @@ test("published package includes enterprise policy examples", () => {
   assert.equal(pkg.files.includes("examples/policies"), true);
   assert.equal(pkg.files.includes("CONTRIBUTING.md"), true);
   assert.equal(pkg.files.includes("docs/releasing.md"), true);
+  assert.equal(pkg.files.includes("docs/repository-management.md"), true);
 });
 
 test("generated local artifacts are ignored", () => {

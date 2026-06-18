@@ -13,6 +13,7 @@ blockSeverities:
 include:
   - "**/*"
 exclude:
+  - ".git/**"
   - "dist/**"
   - "node_modules/**"
   - "coverage/**"

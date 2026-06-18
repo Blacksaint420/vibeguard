@@ -1,10 +1,21 @@
 # VibeGuard
 
+[![CI](https://github.com/Blacksaint420/vibeguard/actions/workflows/ci.yml/badge.svg)](https://github.com/Blacksaint420/vibeguard/actions/workflows/ci.yml)
+[![Code Scanning](https://github.com/Blacksaint420/vibeguard/actions/workflows/vibeguard-code-scanning.yml/badge.svg)](https://github.com/Blacksaint420/vibeguard/actions/workflows/vibeguard-code-scanning.yml)
+[![Main Change Readiness](https://github.com/Blacksaint420/vibeguard/actions/workflows/main-change-readiness.yml/badge.svg)](https://github.com/Blacksaint420/vibeguard/actions/workflows/main-change-readiness.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
+
 VibeGuard is a local-first AI security CLI framework for developers, security teams, and GRC teams.
 
 > Check the code your AI just changed before you accept, commit, or merge it.
 
 The guided CLI walks users through developer scans, GRC risk briefings, AI Bill of Materials generation, agent capability graphing, reports, rule explanations, and local health checks. The same engine is still available through explicit commands for automation. Findings are mapped to the OWASP Top 10 for LLM Applications 2025 and other AI security frameworks where applicable, with evidence, attack path, impact, and a concrete fix. It does not upload source code.
+
+Recommended GitHub repository description:
+
+```text
+Local-first AI security CLI for scanning AI-built apps, generating AI BOMs, agent capability graphs, SARIF, and GRC-ready risk evidence.
+```
 
 ## Project Status
 
@@ -182,7 +193,7 @@ permissions:
 steps:
   - uses: actions/checkout@v6
   - id: vibeguard
-    uses: OWNER/vibeguard@v0.1.0
+    uses: Blacksaint420/vibeguard@v0.1.0
     with:
       path: "."
       version: "latest"
@@ -195,11 +206,11 @@ steps:
     run: exit 1
 ```
 
-See [`docs/ci.md`](./docs/ci.md) for CI usage and [`.github/workflows/vibeguard-code-scanning.yml`](./.github/workflows/vibeguard-code-scanning.yml) for this repository's own scan workflow.
+See [`docs/ci.md`](./docs/ci.md) for CI usage, [`.github/workflows/vibeguard-code-scanning.yml`](./.github/workflows/vibeguard-code-scanning.yml) for this repository's own scan workflow, and [`.github/workflows/main-change-readiness.yml`](./.github/workflows/main-change-readiness.yml) for the significant-change automation that runs on meaningful pushes to `main`.
 
 ## Contributing
 
-Contributions are welcome. Read [`CONTRIBUTING.md`](./CONTRIBUTING.md) for setup, verification, and pull request guidance. For release steps, see [`docs/releasing.md`](./docs/releasing.md).
+Contributions are welcome. Read [`CONTRIBUTING.md`](./CONTRIBUTING.md) for setup, verification, and pull request guidance. For release steps, see [`docs/releasing.md`](./docs/releasing.md). For repository settings, topics, and maintainer automation, see [`docs/repository-management.md`](./docs/repository-management.md).
 
 ## Security
 

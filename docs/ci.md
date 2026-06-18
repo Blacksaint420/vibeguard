@@ -35,7 +35,7 @@ permissions:
 steps:
   - uses: actions/checkout@v6
   - id: vibeguard
-    uses: OWNER/vibeguard@v0.1.0
+    uses: Blacksaint420/vibeguard@v0.1.0
     with:
       path: "."
       version: "latest"
@@ -49,3 +49,7 @@ steps:
 ```
 
 Set `fail-on-findings: "true"` only when you do not need later workflow steps, such as SARIF upload, to run after blocking findings.
+
+## Significant Main-Branch Changes
+
+The `Main Change Readiness` workflow runs on pushes to `main` when meaningful files change, including source code, tests, schemas, package metadata, policies, docs, workflows, and release files. It runs the full verification path, generates SARIF, AI BOM, and agent graph artifacts, uploads SARIF to code scanning, and fails the run when VibeGuard reports blocking findings.

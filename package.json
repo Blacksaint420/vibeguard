@@ -8,11 +8,11 @@
   "author": "VibeGuard maintainers",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/OWNER/vibeguard.git"
+    "url": "git+https://github.com/Blacksaint420/vibeguard.git"
   },
-  "homepage": "https://github.com/OWNER/vibeguard#readme",
+  "homepage": "https://github.com/Blacksaint420/vibeguard#readme",
   "bugs": {
-    "url": "https://github.com/OWNER/vibeguard/issues"
+    "url": "https://github.com/Blacksaint420/vibeguard/issues"
   },
   "keywords": [
     "ai-security",
@@ -45,6 +45,7 @@
     "docs/getting-started.md",
     "docs/pre-commit.md",
     "docs/releasing.md",
+    "docs/repository-management.md",
     "docs/rules.md",
     "docs/security-model.md",
     "schemas",
