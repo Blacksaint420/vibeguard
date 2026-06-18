@@ -71,7 +71,7 @@
     "vibeguard:dist": "node dist/packages/cli/src/index.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "devDependencies": {
     "typescript": "6.0.3"

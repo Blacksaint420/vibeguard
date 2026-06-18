@@ -56,6 +56,7 @@ test("package metadata supports local enterprise adoption", () => {
   assert.equal(pkg.repository.url, "git+https://github.com/Blacksaint420/vibeguard.git");
   assert.equal(pkg.author, "VibeGuard maintainers");
   assert.equal(pkg.private, true);
+  assert.equal(pkg.engines.node, ">=22");
   assert.equal("publishConfig" in pkg, false);
   assert.equal(pkg.keywords.includes("ai-security"), true);
   assert.equal(pkg.keywords.includes("aibom"), true);
@@ -76,6 +77,12 @@ test("GitHub workflows and action exist", () => {
   assert.equal(release.includes("npm publish"), false);
   assert.equal(release.includes("NPM_TOKEN"), false);
   assert.equal(release.includes("npm run vibeguard:dist -- doctor"), true);
+
+  const ci = readFileSync(".github/workflows/ci.yml", "utf8");
+  assert.equal(ci.includes('node-version:'), true);
+  assert.equal(ci.includes('- "22.x"'), true);
+  assert.equal(ci.includes('- "24.x"'), true);
+  assert.equal(ci.includes('- "20.x"'), false);
 
   const scan = readFileSync(".github/workflows/vibeguard-code-scanning.yml", "utf8");
   assert.equal(scan.includes("security-events: write"), true);
