@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibeguard.dev/schemas/vibeguard-dashboard.schema.json",
+  "title": "VibeGuard Local Dashboard Data",
+  "type": "object",
+  "required": ["tool", "schemaVersion", "generatedAt", "summary", "artifacts", "warnings", "dataHandling"],
+  "properties": {
+    "tool": { "const": "vibeguard" },
+    "schemaVersion": { "const": "vibeguard.dashboard.v1" },
+    "generatedAt": { "type": "string" },
+    "summary": {
+      "type": "object",
+      "required": [
+        "posture",
+        "generatedAt",
+        "blocking",
+        "findings",
+        "aiAssets",
+        "highRiskCapabilities",
+        "changeRiskEvents",
+        "governanceViolations"
+      ],
+      "properties": {
+        "posture": { "enum": ["pass", "review", "blocked", "unknown"] },
+        "generatedAt": { "type": "string" },
+        "targetPath": { "type": "string" },
+        "blocking": { "type": "number" },
+        "findings": { "type": "number" },
+        "aiAssets": { "type": "number" },
+        "highRiskCapabilities": { "type": "array", "items": { "type": "string" } },
+        "changeRiskEvents": { "type": "number" },
+        "governanceViolations": { "type": "number" },
+        "coverage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "filesDiscovered": { "type": "number" },
+            "filesScanned": { "type": "number" },
+            "filesSkipped": { "type": "number" },
+            "filesExcludedByPolicy": { "type": "number" },
+            "filesSkippedBinary": { "type": "number" },
+            "filesSkippedOversized": { "type": "number" },
+            "filesUnreadable": { "type": "number" },
+            "fileLimitReached": { "type": "boolean" },
+            "coveragePercent": { "type": "number" },
+            "coverageStatus": { "type": "string" }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "status"],
+        "properties": {
+          "name": { "type": "string" },
+          "path": { "type": "string" },
+          "schemaVersion": { "type": "string" },
+          "sha256": { "type": "string" },
+          "status": { "enum": ["available", "missing", "invalid"] },
+          "message": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "aiBom": { "type": "object" },
+    "aiBomDiff": { "type": "object" },
+    "riskReport": { "type": "object" },
+    "agentGraph": { "type": "object" },
+    "changeRisk": { "type": "object", "additionalProperties": true },
+    "suppressions": { "type": "array" },
+    "grcMappings": { "type": "object", "additionalProperties": true },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "dataHandling": {
+      "type": "object",
+      "required": ["localFirst", "uploadsByDefault", "externalResources"],
+      "properties": {
+        "localFirst": { "const": true },
+        "uploadsByDefault": { "const": false },
+        "externalResources": { "const": false }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
